@@ -11,8 +11,11 @@ import time
 load_dotenv()
 
 def get_secret(key_name):
-    if key_name in st.secrets:
-        return st.secrets[key_name]
+    try:
+        if key_name in st.secrets:
+            return st.secrets[key_name]
+    except Exception:
+        pass
     return os.environ.get(key_name)
 
 url = get_secret("SUPABASE_URL")
@@ -173,9 +176,10 @@ else:
         st.rerun()
 
     # Layout
-    tab1, tab2, tab3 = st.tabs(["🔒 Access Logs", "⚠️ Live Monitor", "🎵 Choir Attendance"])
+    tab1, tab2, tab3= st.tabs(["🎵 Choir Attendance", "⚠️ Live Monitor", "🔒 Access Logs"])
 
-    with tab3:
+
+    with tab1:
         st.header("Choir Attendance Dashboard")
         
         current_year = datetime.now().year
@@ -203,54 +207,58 @@ else:
                         else:
                             st.info(msg)
                 
-                # Fetch specifically for today
-                try:
-                    start_of_day = datetime(today.year, today.month, today.day)
-                    pass
-                except:
-                    pass
+                if st.button('Refresh Today Data'):
+                    st.rerun()
                 
-                if not choir_df.empty:
-                    start_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_today = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
-                    
-                    todays_logs = get_logs_for_date_range(start_today, end_today)
-                    df_todays_logs = pd.DataFrame(todays_logs)
-                    
-                    attendance_status = []
-                    
-                    # Normalize UID columns
-                    uid_col_persons = "card_uid"
-                    uid_col_logs = "card_uid" if not df_todays_logs.empty and "card_uid" in df_todays_logs.columns else "student_uid"
-                    
-                    present_uids = set()
-                    if not df_todays_logs.empty and uid_col_logs in df_todays_logs.columns:
-                         present_uids = set(df_todays_logs[uid_col_logs].unique())
-                    
-                    for index, row in choir_df.iterrows():
-                        uid = row.get(uid_col_persons)
-                        is_present = uid in present_uids
+                # Check for today's session
+                check_date_str = today.strftime("%Y-%m-%d")
+                session_check = supabase.table("choir_practice_dates").select("*").eq("date", check_date_str).execute()
+                
+                if session_check.data:
+                    if not choir_df.empty:
+                        start_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        end_today = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
                         
-                        # Find time in
-                        time_in = "-"
-                        if is_present:
-                            # Find first log
-                            person_logs = df_todays_logs[df_todays_logs[uid_col_logs] == uid]
-                            if not person_logs.empty:
-                                if "created_at" in person_logs.columns:
-                                    first_log = pd.to_datetime(person_logs['created_at']).min()
-                                    # Convert to loc time (approx +2 for SA)
-                                    first_log = first_log.tz_convert("Africa/Johannesburg") if first_log.tzinfo else first_log
-                                    time_in = first_log.strftime("%H:%M")
+                        todays_logs = get_logs_for_date_range(start_today, end_today)
+                        df_todays_logs = pd.DataFrame(todays_logs)
+                        
+                        attendance_status = []
+                        
+                        # Normalize UID columns
+                        uid_col_persons = "card_uid"
+                        uid_col_logs = "card_uid" if not df_todays_logs.empty and "card_uid" in df_todays_logs.columns else "student_uid"
+                        
+                        present_uids = set()
+                        if not df_todays_logs.empty and uid_col_logs in df_todays_logs.columns:
+                             present_uids = set(df_todays_logs[uid_col_logs].unique())
+                        
+                        for index, row in choir_df.iterrows():
+                            uid = row.get(uid_col_persons)
+                            is_present = uid in present_uids
+                            
+                            # Find time in
+                            time_in = "-"
+                            if is_present:
+                                # Find first log
+                                person_logs = df_todays_logs[df_todays_logs[uid_col_logs] == uid]
+                                if not person_logs.empty:
+                                    if "created_at" in person_logs.columns:
+                                        first_log = pd.to_datetime(person_logs['created_at']).min()
+                                        first_log = first_log.tz_convert("Africa/Johannesburg") if first_log.tzinfo else first_log
+                                        time_in = first_log.strftime("%H:%M")
 
-                        attendance_status.append({
-                            "Name and Surname": f"{row.get('name', '')} {row.get('surname', '')}",
-                            "Present": "✅" if is_present else "", # "❌"
-                            "Time In": time_in,
-                            "Card UID": uid
-                        })
-                    
-                    st.dataframe(pd.DataFrame(attendance_status), use_container_width=True)
+                            attendance_status.append({
+                                "Name and Surname": f"{row.get('name', '')} {row.get('surname', '')}",
+                                "Grade": row.get('grade', ''),
+                                "Present": "✅" if is_present else "",
+                                "Time In": time_in,
+                            })
+                        
+                        df_attendance = pd.DataFrame(attendance_status)
+                        df_attendance.index = df_attendance.index + 1
+                        st.dataframe(df_attendance, use_container_width=True)
+                else:
+                    st.info("No practice session created for today.")
 
             with subtab_year:
                 st.subheader(f"Attendance Report {selected_year}")
@@ -326,7 +334,7 @@ else:
         else:
             st.info("No unidentified logs found.")
 
-    with tab1:
+    with tab3:
         st.markdown("### Access History")
         logs_data = get_access_logs()
         
