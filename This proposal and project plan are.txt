@@ -1,0 +1,84 @@
+This proposal and project plan are structured to address the specific requirements for a **South African school environment**, focusing on scalability, load-shedding resilience, and data isolation.
+
+---
+
+# Project Proposal: SmartSchool Access & Attendance System
+
+## 1. Executive Summary
+
+The SmartSchool Access system is a hybrid hardware-software solution designed to automate student entry and attendance tracking. Utilizing encrypted NFC technology and a cloud-integrated backend, the system ensures that schools can manage security efficiently while providing real-time attendance data to administrators.
+
+## 2. Core Objectives
+
+* **Automated Access:** Replace manual gate-keeping with NFC-based validation.
+* **Real-Time Attendance:** Instant logging of student entry/exit to a centralized dashboard.
+* **Infrastructure Resilience:** System design to remain operational during power outages (Loadshedding) and internet downtime.
+* **Scalable Architecture:** A multi-tenant design allowing for isolated on-premise or cloud deployments for multiple schools.
+
+## 3. Technical Solution
+
+### 3.1 Hardware (The Edge)
+
+* **Controller:** ESP32-S3 (Wi-Fi/Bluetooth enabled).
+* **Reading Interface:** PN532 NFC Module (13.56MHz) for secure, non-clonable student IDs.
+* **Locking Mechanism:** 12V Solenoid/Maglock controlled via a 5V Relay.
+* **Power:** 12V DC UPS backup system to ensure functionality during Loadshedding.
+
+### 3.2 Software (The Cloud/On-Premise)
+
+* **Database:** Supabase/PostgreSQL with Row Level Security (RLS) for school isolation.
+* **Backend:** Node.js or Python API to bridge the hardware and database.
+* **Frontend:** A web-based dashboard for administrators to view "In-School" status and historical reports.
+
+---
+
+# Project Plan (MVP Phase)
+
+## Phase 1: Procurement & Hardware Setup (Week 1)
+
+| Task | Description | Source |
+| --- | --- | --- |
+| **Component Sourcing** | Purchase ESP32, PN532, Relay, and 12V Lock. | Takealot / Netram |
+| **Circuit Assembly** | Wire the ESP32 to the Relay and NFC Reader on a breadboard. | Internal |
+| **Firmware Basics** | Write C++ code to read NFC UID and trigger the relay locally. | Internal |
+
+## Phase 2: Backend Development (Week 2)
+
+| Task | Description | Tech |
+| --- | --- | --- |
+| **Database Design** | Create tables for `Schools`, `Students`, and `Attendance`. | Supabase |
+| **API Integration** | Program the ESP32 to send an HTTP POST request on a valid tap. | ESP32/Rest API |
+| **Local Caching** | Implement a "White-list" on the ESP32 for offline access. | SPIFFS/LittleFS |
+
+## Phase 3: Dashboard & Reporting (Week 3)
+
+| Task | Description | Tech |
+| --- | --- | --- |
+| **Admin UI** | Build a dashboard showing "Who is in" vs "Who is absent." | Streamlit / React |
+| **Multi-Tenancy** | Configure logic to isolate School A's data from School B. | PostgreSQL RLS |
+| **Alerting** | (Optional) SMS/Email alert for late arrivals. | Twilio / SendGrid |
+
+## Phase 4: Testing & Deployment (Week 4)
+
+| Task | Description | Location |
+| --- | --- | --- |
+| **Stress Testing** | Test the gate with rapid, repeated card taps. | Lab Environment |
+| **Connectivity Test** | Simulate internet failure to ensure local access still works. | Lab Environment |
+| **Site Install** | Mounting hardware in a waterproof enclosure at the pilot gate. | School Site |
+
+---
+
+## 4. Budget Estimate (Per Gate/Site)
+
+* **Hardware Components:** ± R1,200
+* **Enclosure & Mounting:** ± R400
+* **Power Backup (Mini UPS):** ± R600
+* **Cloud Hosting:** R0 (Free Tier) to R450/month (Pro Tier).
+
+---
+
+## 5. Next Steps
+
+To begin this project, we need to finalize the database structure to ensure it supports the "Isolated School" model you requested.
+
+**Would you like me to generate the SQL Database Schema that defines how Schools, Students, and Attendance logs will be linked?**
