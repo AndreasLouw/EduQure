@@ -7,10 +7,16 @@ from datetime import datetime, date
 import time
 
 # Load environment variables
+# Load environment variables
 load_dotenv()
 
-url = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
+def get_secret(key_name):
+    if key_name in st.secrets:
+        return st.secrets[key_name]
+    return os.environ.get(key_name)
+
+url = get_secret("SUPABASE_URL")
+key = get_secret("SUPABASE_KEY")
 
 if not url or not key:
     st.error("Supabase URL and Key not found. Please check your .env file.")
