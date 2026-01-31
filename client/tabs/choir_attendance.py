@@ -152,43 +152,75 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
     with cols[5]:
         # Manual attendance checkbox
         attended_key = f"manual_attended_{person_id}_{idx}"
+        excuse_key = f"excuse_{person_id}_{idx}"
+        
+        # Keys to track last saved state (to detect actual changes)
+        attended_last_saved_key = f"_last_saved_{attended_key}"
+        excuse_last_saved_key = f"_last_saved_{excuse_key}"
+        
+        # Initialize session state from database if not already set
+        if attended_key not in st.session_state:
+            st.session_state[attended_key] = manual_record['attended']
+            st.session_state[attended_last_saved_key] = manual_record['attended']
+        if excuse_key not in st.session_state:
+            st.session_state[excuse_key] = manual_record['excuse']
+            st.session_state[excuse_last_saved_key] = manual_record['excuse']
         
         # Use factory function to properly capture variables
-        def make_attendance_callback(pid, key, db_value):
+        def make_attendance_callback(pid, key, excuse_key, attended_last_saved_key, excuse_last_saved_key):
             def callback():
                 new_value = st.session_state[key]
-                # Only update if value actually changed from what's in DB
-                if new_value != db_value:
-                    update_manual_attendance(pid, attended=new_value)
+                last_saved = st.session_state.get(attended_last_saved_key, not new_value)  # Default to opposite to ensure update
+                
+                # Only update if value actually changed from last saved state
+                if new_value != last_saved:
+                    # If attended is checked, uncheck excuse (mutually exclusive)
+                    if new_value:
+                        st.session_state[excuse_key] = False  # Update UI immediately
+                        update_manual_attendance(pid, attended=new_value, excuse=False)
+                        st.session_state[excuse_last_saved_key] = False  # Track saved state
+                    else:
+                        update_manual_attendance(pid, attended=new_value)
+                    
+                    # Track the new saved state
+                    st.session_state[attended_last_saved_key] = new_value
             return callback
         
         st.checkbox(
             "Attended",
-            value=manual_record['attended'],
             key=attended_key,
             label_visibility="collapsed",
-            on_change=make_attendance_callback(person_id, attended_key, manual_record['attended'])
+            on_change=make_attendance_callback(person_id, attended_key, excuse_key, attended_last_saved_key, excuse_last_saved_key)
         )
                 
     with cols[6]:
-        # Excuse checkbox
-        excuse_key = f"excuse_{person_id}_{idx}"
+        # Excuse checkbox (keys already defined above)
         
         # Use factory function to properly capture variables
-        def make_excuse_callback(pid, key, db_value):
+        def make_excuse_callback(pid, key, attended_key, excuse_last_saved_key, attended_last_saved_key):
             def callback():
                 new_value = st.session_state[key]
-                # Only update if value actually changed from what's in DB
-                if new_value != db_value:
-                    update_manual_attendance(pid, excuse=new_value)
+                last_saved = st.session_state.get(excuse_last_saved_key, not new_value)  # Default to opposite to ensure update
+                
+                # Only update if value actually changed from last saved state
+                if new_value != last_saved:
+                    # If excuse is checked, uncheck attended (mutually exclusive)
+                    if new_value:
+                        st.session_state[attended_key] = False  # Update UI immediately
+                        update_manual_attendance(pid, excuse=new_value, attended=False)
+                        st.session_state[attended_last_saved_key] = False  # Track saved state
+                    else:
+                        update_manual_attendance(pid, excuse=new_value)
+                    
+                    # Track the new saved state
+                    st.session_state[excuse_last_saved_key] = new_value
             return callback
         
         st.checkbox(
             "Excuse",
-            value=manual_record['excuse'],
             key=excuse_key,
             label_visibility="collapsed",
-            on_change=make_excuse_callback(person_id, excuse_key, manual_record['excuse'])
+            on_change=make_excuse_callback(person_id, excuse_key, attended_key, excuse_last_saved_key, attended_last_saved_key)
         )
 
 def render_todays_attendance(choir_df):
