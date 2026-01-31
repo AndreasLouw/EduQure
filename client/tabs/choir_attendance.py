@@ -132,6 +132,61 @@ def update_manual_attendance(person_id, attended=None, excuse=None):
         st.error(f"Error updating manual attendance: {e}")
         return False
 
+@st.fragment
+def render_attendance_row(idx, row, person_id, manual_attendance_dict):
+    """Render a single attendance row with checkboxes (fragment to prevent full reload)"""
+    manual_record = manual_attendance_dict.get(person_id, {'attended': False, 'excuse': False})
+    
+    cols = st.columns([0.5, 3, 1, 1.5, 1.5, 1.5, 1.5])
+    
+    with cols[0]:
+        st.write(f"{idx + 1}")
+    with cols[1]:
+        st.write(row['Name and Surname'])
+    with cols[2]:
+        st.write(row['Grade'])
+    with cols[3]:
+        st.write(row['Present'])
+    with cols[4]:
+        st.write(row['Time In'])
+    with cols[5]:
+        # Manual attendance checkbox
+        attended_key = f"manual_attended_{person_id}_{idx}"
+        
+        # Use factory function to properly capture variables
+        def make_attendance_callback(pid, key):
+            def callback():
+                new_value = st.session_state[key]
+                update_manual_attendance(pid, attended=new_value)
+            return callback
+        
+        st.checkbox(
+            "Attended",
+            value=manual_record['attended'],
+            key=attended_key,
+            label_visibility="collapsed",
+            on_change=make_attendance_callback(person_id, attended_key)
+        )
+                
+    with cols[6]:
+        # Excuse checkbox
+        excuse_key = f"excuse_{person_id}_{idx}"
+        
+        # Use factory function to properly capture variables
+        def make_excuse_callback(pid, key):
+            def callback():
+                new_value = st.session_state[key]
+                update_manual_attendance(pid, excuse=new_value)
+            return callback
+        
+        st.checkbox(
+            "Excuse",
+            value=manual_record['excuse'],
+            key=excuse_key,
+            label_visibility="collapsed",
+            on_change=make_excuse_callback(person_id, excuse_key)
+        )
+
 def render_todays_attendance(choir_df):
     """Render today's attendance subtab"""
     st.subheader("Today's Attendance")
@@ -174,6 +229,10 @@ def render_todays_attendance(choir_df):
                         'excuse': record.get('excuse', False)
                     }
             
+            # Debug: Show available columns
+            with st.expander("🔍 Debug Info (Available Columns)"):
+                st.write("Columns in choir_df:", list(choir_df.columns))
+            
             attendance_status = []
             
             # Normalize UID columns
@@ -199,12 +258,16 @@ def render_todays_attendance(choir_df):
                             first_log = first_log.tz_convert("Africa/Johannesburg") if first_log.tzinfo else first_log
                             time_in = first_log.strftime("%H:%M")
 
+                # Get person_id - after merge, id_y is from persons table which is what we need
+                # id_x would be from choir_register if it has an id column
+                person_id = row.get('id_y') or row.get('id') or row.get('person_id')
+                
                 attendance_status.append({
                     "Name and Surname": f"{row.get('name', '')} {row.get('surname', '')}",
                     "Grade": row.get('grade', ''),
                     "Present": "✅" if is_present else "",
                     "Time In": time_in,
-                    "person_id": row.get('id'),  # Store person_id for checkbox callbacks
+                    "person_id": person_id,  # Store person_id for checkbox callbacks
                 })
             
             df_attendance = pd.DataFrame(attendance_status)
@@ -234,59 +297,13 @@ def render_todays_attendance(choir_df):
             # Display each row with checkboxes
             for idx, row in df_attendance.iterrows():
                 person_id = row['person_id']
-                manual_record = manual_attendance_dict.get(person_id, {'attended': False, 'excuse': False})
                 
-                cols = st.columns([0.5, 3, 1, 1.5, 1.5, 1.5, 1.5])
+                # Skip if person_id is None or invalid
+                if person_id is None:
+                    st.warning(f"⚠️ Missing person ID for {row['Name and Surname']} - cannot track manual attendance")
+                    continue
                 
-                with cols[0]:
-                    st.write(f"{idx + 1}")
-                with cols[1]:
-                    st.write(row['Name and Surname'])
-                with cols[2]:
-                    st.write(row['Grade'])
-                with cols[3]:
-                    st.write(row['Present'])
-                with cols[4]:
-                    st.write(row['Time In'])
-                with cols[5]:
-                    # Manual attendance checkbox
-                    checkbox_key = f"manual_attended_{person_id}_{idx}"
-                    
-                    # Initialize session state if not exists
-                    if checkbox_key not in st.session_state:
-                        st.session_state[checkbox_key] = manual_record['attended']
-                    
-                    manual_attended = st.checkbox(
-                        "Attended",
-                        value=st.session_state[checkbox_key],
-                        key=checkbox_key,
-                        label_visibility="collapsed"
-                    )
-                    
-                    # Only update if value actually changed
-                    if manual_attended != manual_record['attended']:
-                        if update_manual_attendance(person_id, attended=manual_attended):
-                            st.session_state[checkbox_key] = manual_attended
-                            
-                with cols[6]:
-                    # Excuse checkbox
-                    checkbox_key = f"excuse_{person_id}_{idx}"
-                    
-                    # Initialize session state if not exists
-                    if checkbox_key not in st.session_state:
-                        st.session_state[checkbox_key] = manual_record['excuse']
-                    
-                    has_excuse = st.checkbox(
-                        "Excuse",
-                        value=st.session_state[checkbox_key],
-                        key=checkbox_key,
-                        label_visibility="collapsed"
-                    )
-                    
-                    # Only update if value actually changed
-                    if has_excuse != manual_record['excuse']:
-                        if update_manual_attendance(person_id, excuse=has_excuse):
-                            st.session_state[checkbox_key] = has_excuse
+                render_attendance_row(idx, row, person_id, manual_attendance_dict)
     else:
         st.info("No practice session created for today.")
 
