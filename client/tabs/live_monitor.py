@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from backend.utils.supabase_client import get_supabase
+from client.utils.supabase_client import get_supabase
 
 def get_unidentified_logs():
     """Fetch recent unidentified card scans"""

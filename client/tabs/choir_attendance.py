@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-from backend.utils.supabase_client import get_supabase
+from client.utils.supabase_client import get_supabase
 
 def get_choir_members(year):
     """Fetch choir members for a specific year"""
