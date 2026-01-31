@@ -249,6 +249,9 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict, is_presen
                     
                     # Track the new saved state
                     st.session_state[attended_last_saved_key] = new_value
+                    
+                    # Increment totals version to trigger refresh
+                    st.session_state['_totals_version'] = st.session_state.get('_totals_version', 0) + 1
             return callback
         
         st.checkbox(
@@ -279,6 +282,9 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict, is_presen
                     
                     # Track the new saved state
                     st.session_state[excuse_last_saved_key] = new_value
+                    
+                    # Increment totals version to trigger refresh
+                    st.session_state['_totals_version'] = st.session_state.get('_totals_version', 0) + 1
             return callback
         
         st.checkbox(
@@ -330,11 +336,7 @@ def render_todays_attendance(choir_df):
                         'excuse': record.get('excuse', False),
                         'updated_at': record.get('updated_at')  # Store timestamp
                     }
-            
-            # Debug: Show available columns
-            with st.expander("🔍 Debug Info (Available Columns)"):
-                st.write("Columns in choir_df:", list(choir_df.columns))
-            
+
             attendance_status = []
             
             # Normalize UID columns
@@ -420,6 +422,52 @@ def render_todays_attendance(choir_df):
                     continue
                 
                 render_attendance_row(idx, row, person_id, manual_attendance_dict, row['is_present_via_card'])
+            
+            # Calculate and display totals dynamically using a fragment
+            # The fragment runs every 0.5s to pick up session state changes from checkbox interactions
+            @st.fragment(run_every=0.5)
+            def render_attendance_totals(attendance_df):
+                """Render attendance totals that update dynamically based on session state"""
+                st.divider()
+                
+                total_members = len(attendance_df)
+                present_count = 0
+                excuse_count = 0
+                
+                for idx, row in attendance_df.iterrows():
+                    person_id = row['person_id']
+                    if person_id is None:
+                        continue
+                    
+                    # Check if present via card scan
+                    is_present_via_card = row['is_present_via_card']
+                    
+                    # Check session state for current checkbox values (dynamic)
+                    attended_key = f"manual_attended_{person_id}_{idx}"
+                    excuse_key = f"excuse_{person_id}_{idx}"
+                    
+                    is_manually_attended = st.session_state.get(attended_key, False)
+                    has_excuse = st.session_state.get(excuse_key, False)
+                    
+                    if is_present_via_card or is_manually_attended:
+                        present_count += 1
+                    elif has_excuse:
+                        excuse_count += 1
+                
+                absent_count = total_members - present_count - excuse_count
+                
+                # Display totals in a nice format
+                total_cols = st.columns(4)
+                with total_cols[0]:
+                    st.metric("👥 Total Members", total_members)
+                with total_cols[1]:
+                    st.metric("✅ Present", present_count)
+                with total_cols[2]:
+                    st.metric("📝 Excused", excuse_count)
+                with total_cols[3]:
+                    st.metric("❌ Absent", absent_count)
+            
+            render_attendance_totals(df_attendance)
     else:
         st.info("No practice session created for today.")
 
