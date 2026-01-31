@@ -118,6 +118,9 @@ def update_manual_attendance(person_id, attended=None, excuse=None):
         if excuse is not None:
             data["excuse"] = excuse
         
+        # Always set updated_at to current time
+        data["updated_at"] = datetime.now().isoformat()
+        
         if existing.data:
             # Update existing record
             record_id = existing.data[0]["id"]
@@ -133,11 +136,66 @@ def update_manual_attendance(person_id, attended=None, excuse=None):
         return False
 
 @st.fragment
-def render_attendance_row(idx, row, person_id, manual_attendance_dict):
+def render_attendance_row(idx, row, person_id, manual_attendance_dict, is_present_via_card):
     """Render a single attendance row with checkboxes (fragment to prevent full reload)"""
     manual_record = manual_attendance_dict.get(person_id, {'attended': False, 'excuse': False})
     
     cols = st.columns([0.5, 3, 1, 1.5, 1.5, 1.5, 1.5])
+    
+    # Define keys first so we can use them for dynamic display
+    attended_key = f"manual_attended_{person_id}_{idx}"
+    excuse_key = f"excuse_{person_id}_{idx}"
+    
+    # Keys to track last saved state (to detect actual changes)
+    attended_last_saved_key = f"_last_saved_{attended_key}"
+    excuse_last_saved_key = f"_last_saved_{excuse_key}"
+    
+    # Initialize session state from database if not already set
+    if attended_key not in st.session_state:
+        st.session_state[attended_key] = manual_record['attended']
+        st.session_state[attended_last_saved_key] = manual_record['attended']
+    if excuse_key not in st.session_state:
+        st.session_state[excuse_key] = manual_record['excuse']
+        st.session_state[excuse_last_saved_key] = manual_record['excuse']
+    
+    # Check current manual attendance state from session
+    is_manually_attended = st.session_state.get(attended_key, False)
+    
+    # Person is present if they scanned their card OR are manually marked as attended
+    is_present = is_present_via_card or is_manually_attended
+    
+    # Determine time in based on current state
+    time_in = row['Time In']  # Default from database (card scan time)
+    if not is_present_via_card and is_manually_attended:
+        # First check if we have a timestamp in session state (most recent)
+        timestamp_key = f"_timestamp_{attended_key}"
+        session_timestamp = st.session_state.get(timestamp_key)
+        
+        if session_timestamp:
+            # Use timestamp from session state (just set by checkbox)
+            try:
+                updated_time = pd.to_datetime(session_timestamp)
+                if updated_time.tzinfo:
+                    updated_time = updated_time.tz_convert("Africa/Johannesburg")
+                time_in = updated_time.strftime("%H:%M")
+            except:
+                time_in = "Manual"
+        else:
+            # Fall back to updated_at from manual attendance record
+            manual_updated_at = manual_record.get('updated_at')
+            if manual_updated_at:
+                try:
+                    # Parse and format the timestamp
+                    updated_time = pd.to_datetime(manual_updated_at)
+                    if updated_time.tzinfo:
+                        updated_time = updated_time.tz_convert("Africa/Johannesburg")
+                    time_in = updated_time.strftime("%H:%M")
+                except:
+                    time_in = "Manual"
+            else:
+                time_in = "Manual"
+    elif not is_present:
+        time_in = "-"
     
     with cols[0]:
         st.write(f"{idx + 1}")
@@ -146,9 +204,11 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
     with cols[2]:
         st.write(row['Grade'])
     with cols[3]:
-        st.write(row['Present'])
+        # Dynamic present display based on current state
+        st.write("✅" if is_present else "")
     with cols[4]:
-        st.write(row['Time In'])
+        # Dynamic time in display based on current state
+        st.write(time_in)
     with cols[5]:
         # Manual attendance checkbox
         attended_key = f"manual_attended_{person_id}_{idx}"
@@ -174,6 +234,11 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
                 
                 # Only update if value actually changed from last saved state
                 if new_value != last_saved:
+                    # Store current timestamp in session state
+                    timestamp_key = f"_timestamp_{key}"
+                    current_time = datetime.now()
+                    st.session_state[timestamp_key] = current_time.isoformat()
+                    
                     # If attended is checked, uncheck excuse (mutually exclusive)
                     if new_value:
                         st.session_state[excuse_key] = False  # Update UI immediately
@@ -262,7 +327,8 @@ def render_todays_attendance(choir_df):
                 for record in manual_attendance:
                     manual_attendance_dict[record['person_id']] = {
                         'attended': record.get('attended', False),
-                        'excuse': record.get('excuse', False)
+                        'excuse': record.get('excuse', False),
+                        'updated_at': record.get('updated_at')  # Store timestamp
                     }
             
             # Debug: Show available columns
@@ -281,11 +347,25 @@ def render_todays_attendance(choir_df):
             
             for index, row in choir_df.iterrows():
                 uid = row.get(uid_col_persons)
-                is_present = uid in present_uids
+                
+                # Get person_id - after merge, id_y is from persons table which is what we need
+                # id_x would be from choir_register if it has an id column
+                person_id = row.get('id_y') or row.get('id') or row.get('person_id')
+                
+                # Check if present via card scan
+                is_present_via_card = uid in present_uids
+                
+                # Check if manually marked as attended
+                is_manually_attended = False
+                if person_id and person_id in manual_attendance_dict:
+                    is_manually_attended = manual_attendance_dict[person_id].get('attended', False)
+                
+                # Person is present if they scanned their card OR were manually marked as attended
+                is_present = is_present_via_card or is_manually_attended
                 
                 # Find time in
                 time_in = "-"
-                if is_present:
+                if is_present_via_card:
                     # Find first log
                     person_logs = df_todays_logs[df_todays_logs[uid_col_logs] == uid]
                     if not person_logs.empty:
@@ -293,10 +373,9 @@ def render_todays_attendance(choir_df):
                             first_log = pd.to_datetime(person_logs['created_at']).min()
                             first_log = first_log.tz_convert("Africa/Johannesburg") if first_log.tzinfo else first_log
                             time_in = first_log.strftime("%H:%M")
-
-                # Get person_id - after merge, id_y is from persons table which is what we need
-                # id_x would be from choir_register if it has an id column
-                person_id = row.get('id_y') or row.get('id') or row.get('person_id')
+                elif is_manually_attended:
+                    # If manually attended but no card scan, show "Manual"
+                    time_in = "Manual"
                 
                 attendance_status.append({
                     "Name and Surname": f"{row.get('name', '')} {row.get('surname', '')}",
@@ -304,6 +383,7 @@ def render_todays_attendance(choir_df):
                     "Present": "✅" if is_present else "",
                     "Time In": time_in,
                     "person_id": person_id,  # Store person_id for checkbox callbacks
+                    "is_present_via_card": is_present_via_card,  # Store for dynamic rendering
                 })
             
             df_attendance = pd.DataFrame(attendance_status)
@@ -339,7 +419,7 @@ def render_todays_attendance(choir_df):
                     st.warning(f"⚠️ Missing person ID for {row['Name and Surname']} - cannot track manual attendance")
                     continue
                 
-                render_attendance_row(idx, row, person_id, manual_attendance_dict)
+                render_attendance_row(idx, row, person_id, manual_attendance_dict, row['is_present_via_card'])
     else:
         st.info("No practice session created for today.")
 
