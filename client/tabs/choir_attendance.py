@@ -154,10 +154,12 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
         attended_key = f"manual_attended_{person_id}_{idx}"
         
         # Use factory function to properly capture variables
-        def make_attendance_callback(pid, key):
+        def make_attendance_callback(pid, key, db_value):
             def callback():
                 new_value = st.session_state[key]
-                update_manual_attendance(pid, attended=new_value)
+                # Only update if value actually changed from what's in DB
+                if new_value != db_value:
+                    update_manual_attendance(pid, attended=new_value)
             return callback
         
         st.checkbox(
@@ -165,7 +167,7 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
             value=manual_record['attended'],
             key=attended_key,
             label_visibility="collapsed",
-            on_change=make_attendance_callback(person_id, attended_key)
+            on_change=make_attendance_callback(person_id, attended_key, manual_record['attended'])
         )
                 
     with cols[6]:
@@ -173,10 +175,12 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
         excuse_key = f"excuse_{person_id}_{idx}"
         
         # Use factory function to properly capture variables
-        def make_excuse_callback(pid, key):
+        def make_excuse_callback(pid, key, db_value):
             def callback():
                 new_value = st.session_state[key]
-                update_manual_attendance(pid, excuse=new_value)
+                # Only update if value actually changed from what's in DB
+                if new_value != db_value:
+                    update_manual_attendance(pid, excuse=new_value)
             return callback
         
         st.checkbox(
@@ -184,7 +188,7 @@ def render_attendance_row(idx, row, person_id, manual_attendance_dict):
             value=manual_record['excuse'],
             key=excuse_key,
             label_visibility="collapsed",
-            on_change=make_excuse_callback(person_id, excuse_key)
+            on_change=make_excuse_callback(person_id, excuse_key, manual_record['excuse'])
         )
 
 def render_todays_attendance(choir_df):
