@@ -29,7 +29,7 @@ def render():
         display_cols = ["id", "card_uid", "lock", "created_at"]
         display_cols = [c for c in display_cols if c in df.columns]
         
-        st.dataframe(df[display_cols], use_container_width=True)
+        st.dataframe(df[display_cols], width='stretch')
         st.metric("Recent Unidentified Scans", len(df))
     else:
         st.info("No unidentified logs found.")

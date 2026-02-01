@@ -185,7 +185,7 @@ def render_todays_attendance(choir_df):
                     "Excuse": st.column_config.CheckboxColumn("Excuse"),
                     "is_present_via_card": None, # Hide this column
                 },
-                use_container_width=True,
+                width='stretch',
                 key="attendance_editor",
                 num_rows="fixed",
                 hide_index=True

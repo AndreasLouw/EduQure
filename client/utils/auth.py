@@ -9,8 +9,8 @@ def init_auth_state():
 def login():
     """Display login form and handle authentication"""
     st.header("Login")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    email = st.text_input("Email").strip()
+    password = st.text_input("Password", type="password").strip()
     
     if st.button("Log In"):
         try:

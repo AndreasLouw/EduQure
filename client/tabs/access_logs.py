@@ -82,9 +82,9 @@ def render():
         }
         
         st.dataframe(
-            df_logs[final_cols].style.applymap(color_status, subset=['status'] if 'status' in df_logs.columns else None),
+            df_logs[final_cols].style.map(color_status, subset=['status'] if 'status' in df_logs.columns else None),
             column_config=column_config,
-            use_container_width=True
+            width='stretch'
         )
         
     else:

@@ -94,4 +94,4 @@ def render_yearly_report(choir_df, selected_year):
                 
             matrix.append(row_data)
             
-        st.dataframe(pd.DataFrame(matrix), use_container_width=True)
+        st.dataframe(pd.DataFrame(matrix), width='stretch')
