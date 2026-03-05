@@ -97,13 +97,15 @@ def get_manual_attendance_for_date(target_date):
         st.error(f"Error fetching manual attendance: {e}")
         return []
 
-def update_manual_attendance(person_id, attended=None, excuse=None):
-    """Update or insert manual attendance record for today"""
+def update_manual_attendance(person_id, target_date=None, attended=None, excuse=None):
+    """Update or insert manual attendance record for a specific date (defaults to today)"""
     try:
         supabase = get_supabase()
-        today = date.today()
-        start_date = datetime.combine(today, datetime.min.time())
-        end_date = datetime.combine(today, datetime.max.time())
+        if target_date is None:
+            target_date = date.today()
+            
+        start_date = datetime.combine(target_date, datetime.min.time())
+        end_date = datetime.combine(target_date, datetime.max.time())
         
         # Check if record exists for today
         existing = supabase.table("manual_choir_attendance").select("*") \
@@ -128,6 +130,8 @@ def update_manual_attendance(person_id, attended=None, excuse=None):
         else:
             # Insert new record
             data["person_id"] = person_id
+            # Set created_at to the target date so it shows up correctly in historical queries
+            data["created_at"] = datetime.combine(target_date, datetime.now().time()).isoformat()
             supabase.table("manual_choir_attendance").insert(data).execute()
         
         return True
