@@ -1,0 +1,154 @@
+{
+    "tenant_id": "farmsense",
+    "tenant_name": "FarmSense - Agricultural Monitoring",
+    "tenant_type": "environmental_monitoring",
+    "device_type": "sensor_array",
+    "database": {
+        "schema_prefix": "farmsense_",
+        "tables": {
+            "fields": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "field_name",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "location",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "size_hectares",
+                        "type": "DECIMAL"
+                    },
+                    {
+                        "name": "crop_type",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "sensor_readings": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "field_id",
+                        "type": "UUID",
+                        "foreign_key": "fields.id",
+                        "required": true
+                    },
+                    {
+                        "name": "temperature",
+                        "type": "DECIMAL"
+                    },
+                    {
+                        "name": "moisture",
+                        "type": "DECIMAL"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "alerts": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "field_id",
+                        "type": "UUID",
+                        "foreign_key": "fields.id",
+                        "required": true
+                    },
+                    {
+                        "name": "alert_type",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "threshold_exceeded",
+                        "type": "BOOLEAN"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            }
+        }
+    },
+    "firmware": {
+        "device_type": "esp32_cellular",
+        "template": "environmental_sensor",
+        "sensors": [
+            {
+                "type": "DHT22",
+                "pin": 4,
+                "description": "Temperature sensor"
+            },
+            {
+                "type": "soil_moisture",
+                "pin": 34,
+                "description": "Soil moisture sensor"
+            }
+        ],
+        "actuators": [],
+        "connectivity": "cellular_4g",
+        "features": [
+            "offline_storage",
+            "periodic_upload",
+            "low_power_mode",
+            "battery_monitoring"
+        ],
+        "upload_interval": 300,
+        "endpoints": {
+            "log_reading": "/rest/v1/sensor_readings",
+            "create_alert": "/rest/v1/alerts"
+        }
+    },
+    "dashboard": {
+        "title": "🌾 FarmSense Dashboard",
+        "tabs": [
+            {
+                "id": "live_readings",
+                "name": "📊 Live Readings",
+                "module": "client.tabs.farmsense.live_readings",
+                "enabled": true
+            },
+            {
+                "id": "field_analytics",
+                "name": "📈 Field Analytics",
+                "module": "client.tabs.farmsense.field_analytics",
+                "enabled": true
+            },
+            {
+                "id": "alert_manager",
+                "name": "⚠️ Alert Manager",
+                "module": "client.tabs.farmsense.alert_manager",
+                "enabled": true
+            }
+        ]
+    }
+}

@@ -1,18 +1,15 @@
 import streamlit as st
 from client.utils.auth import init_auth_state, login, render_sidebar
-from client.tabs import choir_attendance, live_monitor, access_logs, choir_management
+from client.tenant_loader import init_tenant_session, get_tenant_context, render_tabs
 
 
 def main():
     # Page configuration - MUST be the first Streamlit command
     st.set_page_config(
-        page_title="School Attendance Live Feed",
+        page_title="Multi-Tenant IoT Platform",
         page_icon="🏫",
-        layout="wide",  # This enables full-width layout
         initial_sidebar_state="expanded"
     )
-
-    st.title("🏫 School Attendance Live Feed")
 
     # Initialize authentication
     init_auth_state()
@@ -21,6 +18,12 @@ def main():
     if not st.session_state.authenticated:
         login()
     else:
+        # Initialize tenant context
+        tenant_context = init_tenant_session()
+        
+        # Update page title based on tenant
+        st.title(tenant_context.get_dashboard_title())
+        
         # Sidebar for logout
         render_sidebar()
         
@@ -28,21 +31,8 @@ def main():
         if st.button('Refresh Data'):
             st.rerun()
 
-        # Main tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["🎵 Choir Attendance", "⚠️ Live Monitor", "🔒 Access Logs", "⚙️ Management"])
-
-        with tab1:
-            choir_attendance.render()
-
-        with tab2:
-            live_monitor.render()
-
-        with tab3:
-            access_logs.render()
-        
-        with tab4:
-            choir_management.render()
+        # Render tenant-specific tabs
+        render_tabs(tenant_context)
 
 if __name__ == "__main__":
     main()
-

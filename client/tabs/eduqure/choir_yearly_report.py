@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from client.tabs.choir_data import get_practice_dates, get_logs_for_date_range, get_manual_attendance_for_date
+from client.tabs.eduqure.choir_data import get_practice_dates, get_logs_for_date_range, get_manual_attendance_for_date
 
 def render_yearly_report(choir_df, selected_year):
     """Render yearly attendance report subtab"""

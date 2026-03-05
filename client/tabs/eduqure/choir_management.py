@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-from client.utils.supabase_client import get_supabase
+from client.utils.tenant_db import get_tenant_table
 
 
 def get_all_persons():
     """Fetch all persons from the database"""
     try:
-        supabase = get_supabase()
-        response = supabase.table("persons").select("*").order("surname", desc=False).execute()
+        response = get_tenant_table("persons").select("*").order("surname", desc=False).execute()
         return response.data if response.data else []
     except Exception as e:
         st.error(f"Error fetching persons: {e}")
@@ -18,8 +17,7 @@ def get_all_persons():
 def get_choir_register(year):
     """Fetch choir register for a specific year"""
     try:
-        supabase = get_supabase()
-        response = supabase.table("choir_register").select("id, personId, year, created_at, removed, persons(name, surname, grade)").eq("year", year).eq("removed", False).execute()
+        response = get_tenant_table("choir_register").select("id, personId, year, created_at, removed, persons(name, surname, grade)").eq("year", year).eq("removed", False).execute()
         return response.data if response.data else []
     except Exception as e:
         st.error(f"Error fetching choir register: {e}")
@@ -29,21 +27,19 @@ def get_choir_register(year):
 def add_person_to_choir(person_id, year):
     """Add a person to the choir register"""
     try:
-        supabase = get_supabase()
-        
         # Check if already exists
-        existing = supabase.table("choir_register").select("*").eq("personId", person_id).eq("year", year).execute()
+        existing = get_tenant_table("choir_register").select("*").eq("personId", person_id).eq("year", year).execute()
         
         if existing.data and len(existing.data) > 0:
             # If exists but removed, update to not removed
             if existing.data[0].get("removed", False):
-                supabase.table("choir_register").update({"removed": False}).eq("id", existing.data[0]["id"]).execute()
+                get_tenant_table("choir_register").update({"removed": False}).eq("id", existing.data[0]["id"]).execute()
                 return True, "Person re-added to choir register."
             else:
                 return False, "Person already in choir register for this year."
         else:
             # Insert new record
-            supabase.table("choir_register").insert({
+            get_tenant_table("choir_register").insert({
                 "personId": person_id,
                 "year": year,
                 "removed": False
@@ -56,8 +52,7 @@ def add_person_to_choir(person_id, year):
 def remove_person_from_choir(register_id):
     """Remove a person from choir register (soft delete by setting removed=True)"""
     try:
-        supabase = get_supabase()
-        supabase.table("choir_register").update({
+        get_tenant_table("choir_register").update({
             "removed": True
         }).eq("id", register_id).execute()
         return True, "Person removed from choir register."
@@ -68,8 +63,7 @@ def remove_person_from_choir(register_id):
 def get_all_practice_dates():
     """Fetch all choir practice dates"""
     try:
-        supabase = get_supabase()
-        response = supabase.table("choir_practice_dates").select("*").order("date", desc=True).execute()
+        response = get_tenant_table("choir_practice_dates").select("*").order("date", desc=True).execute()
         return response.data if response.data else []
     except Exception as e:
         st.error(f"Error fetching practice dates: {e}")
@@ -79,8 +73,7 @@ def get_all_practice_dates():
 def delete_practice_date(date_id):
     """Delete a practice date"""
     try:
-        supabase = get_supabase()
-        supabase.table("choir_practice_dates").delete().eq("id", date_id).execute()
+        get_tenant_table("choir_practice_dates").delete().eq("id", date_id).execute()
         return True, "Practice date deleted."
     except Exception as e:
         return False, f"Error deleting practice date: {e}"
@@ -89,15 +82,14 @@ def delete_practice_date(date_id):
 def add_practice_date(practice_date):
     """Add a new practice date"""
     try:
-        supabase = get_supabase()
         date_str = practice_date.strftime("%Y-%m-%d")
         
         # Check if exists
-        existing = supabase.table("choir_practice_dates").select("*").eq("date", date_str).execute()
+        existing = get_tenant_table("choir_practice_dates").select("*").eq("date", date_str).execute()
         if existing.data and len(existing.data) > 0:
             return False, "Practice date already exists."
         
-        supabase.table("choir_practice_dates").insert({"date": date_str}).execute()
+        get_tenant_table("choir_practice_dates").insert({"date": date_str}).execute()
         return True, "Practice date added."
     except Exception as e:
         return False, f"Error adding practice date: {e}"
@@ -106,8 +98,6 @@ def add_practice_date(practice_date):
 def update_person(person_id, name=None, surname=None, grade=None):
     """Update person's name, surname, and/or grade"""
     try:
-        supabase = get_supabase()
-        
         data = {}
         if name is not None:
             data["name"] = name
@@ -119,7 +109,7 @@ def update_person(person_id, name=None, surname=None, grade=None):
         if not data:
             return False, "No data to update."
         
-        supabase.table("persons").update(data).eq("id", person_id).execute()
+        get_tenant_table("persons").update(data).eq("id", person_id).execute()
         return True, "Person updated successfully."
     except Exception as e:
         return False, f"Error updating person: {e}"
@@ -128,8 +118,6 @@ def update_person(person_id, name=None, surname=None, grade=None):
 def add_new_person(name, surname, grade=None, card_uid=None):
     """Add a new person to the database"""
     try:
-        supabase = get_supabase()
-        
         data = {
             "name": name,
             "surname": surname
@@ -140,7 +128,7 @@ def add_new_person(name, surname, grade=None, card_uid=None):
         if card_uid:
             data["card_uid"] = card_uid
         
-        supabase.table("persons").insert(data).execute()
+        get_tenant_table("persons").insert(data).execute()
         return True, "Person added successfully."
     except Exception as e:
         return False, f"Error adding person: {e}"
@@ -149,8 +137,7 @@ def add_new_person(name, surname, grade=None, card_uid=None):
 def delete_person(person_id):
     """Delete a person from the database"""
     try:
-        supabase = get_supabase()
-        supabase.table("persons").delete().eq("id", person_id).execute()
+        get_tenant_table("persons").delete().eq("id", person_id).execute()
         return True, "Person deleted successfully."
     except Exception as e:
         return False, f"Error deleting person: {e}"

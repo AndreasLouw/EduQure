@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
 from client.utils.supabase_client import get_supabase
+from client.tenant_loader import get_tenant_context
 
 def get_unidentified_logs():
     """Fetch recent unidentified card scans"""
     try:
         supabase = get_supabase()
-        response = supabase.table("unidentified_cards").select("*").order("created_at", desc=True).limit(50).execute()
+        tenant_context = get_tenant_context()
+        table_name = tenant_context.get_table_name("unidentified_cards")
+        
+        response = supabase.table(table_name).select("*").order("created_at", desc=True).limit(50).execute()
         return response.data
     except Exception as e:
         st.error(f"Error fetching unidentified logs: {e}")

@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import time
 from datetime import datetime, date
-from client.utils.supabase_client import get_supabase
+from client.utils.tenant_db import get_tenant_table
 
-from client.tabs.choir_data import (
+from client.tabs.eduqure.choir_data import (
     get_choir_members,
     get_practice_dates,
     create_practice_date,
@@ -12,7 +12,7 @@ from client.tabs.choir_data import (
     get_manual_attendance_for_date,
     update_manual_attendance
 )
-from client.tabs.choir_yearly_report import render_yearly_report
+from client.tabs.eduqure.choir_yearly_report import render_yearly_report
 
 @st.fragment
 
@@ -75,9 +75,8 @@ def render_todays_attendance(choir_df):
     # Load data if not in session state (Cached DB Logic)
     if st.session_state.attendance_df is None:
         # Check for session
-        supabase = get_supabase()
         check_date_str = today.strftime("%Y-%m-%d")
-        session_check = supabase.table("choir_practice_dates").select("*").eq("date", check_date_str).execute()
+        session_check = get_tenant_table("choir_practice_dates").select("*").eq("date", check_date_str).execute()
         
         if session_check.data:
             st.session_state.choir_session_exists = True

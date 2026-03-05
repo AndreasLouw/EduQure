@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 from client.utils.supabase_client import get_supabase
+from client.tenant_loader import get_tenant_context
 
 def get_access_logs():
     """Fetch recent access logs"""
     try:
         supabase = get_supabase()
+        tenant_context = get_tenant_context()
+        table_name = tenant_context.get_table_name("access_logs")
+        
         # Increased limit to better capture daily flows for In/Out logic
-        response = supabase.table("access_logs").select("*").order("created_at", desc=True).limit(200).execute()
+        response = supabase.table(table_name).select("*").order("created_at", desc=True).limit(200).execute()
         return response.data
     except Exception as e:
         st.error(f"Error fetching access logs: {e}")
@@ -17,7 +21,10 @@ def get_persons():
     """Fetch all persons with their card UIDs"""
     try:
         supabase = get_supabase()
-        response = supabase.table("persons").select("card_uid, name, surname").execute()
+        tenant_context = get_tenant_context()
+        table_name = tenant_context.get_table_name("persons")
+        
+        response = supabase.table(table_name).select("card_uid, name, surname").execute()
         return response.data
     except Exception as e:
         return []

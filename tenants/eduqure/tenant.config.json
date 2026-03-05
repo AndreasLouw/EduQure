@@ -1,0 +1,288 @@
+{
+    "tenant_id": "eduqure",
+    "tenant_name": "EduQure - School Attendance",
+    "tenant_type": "access_control",
+    "device_type": "rfid_reader",
+    "database": {
+        "schema_prefix": "eduqure_",
+        "tables": {
+            "persons": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "name",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "surname",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "card_uid",
+                        "type": "TEXT",
+                        "unique": true
+                    },
+                    {
+                        "name": "grade",
+                        "type": "INTEGER"
+                    },
+                    {
+                        "name": "is_choir",
+                        "type": "BOOLEAN",
+                        "default": false
+                    },
+                    {
+                        "name": "choir_year",
+                        "type": "INTEGER"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "access_logs": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "card_uid",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "lock",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "status",
+                        "type": "BOOLEAN",
+                        "default": true
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    },
+                    {
+                        "name": "person_id",
+                        "type": "UUID",
+                        "foreign_key": "persons.id"
+                    }
+                ]
+            },
+            "unidentified_cards": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "card_uid",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "lock",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "choir_practice_dates": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "date",
+                        "type": "DATE",
+                        "unique": true,
+                        "required": true
+                    },
+                    {
+                        "name": "year",
+                        "type": "INTEGER"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "choir_register": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "personId",
+                        "type": "UUID",
+                        "foreign_key": "persons.id",
+                        "required": true
+                    },
+                    {
+                        "name": "year",
+                        "type": "INTEGER",
+                        "required": true
+                    },
+                    {
+                        "name": "removed",
+                        "type": "BOOLEAN",
+                        "default": false
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "manual_choir_attendance": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "person_id",
+                        "type": "UUID",
+                        "foreign_key": "persons.id"
+                    },
+                    {
+                        "name": "practice_date_id",
+                        "type": "UUID",
+                        "foreign_key": "choir_practice_dates.id"
+                    },
+                    {
+                        "name": "attended",
+                        "type": "BOOLEAN",
+                        "default": false
+                    },
+                    {
+                        "name": "excuse",
+                        "type": "BOOLEAN",
+                        "default": false
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    },
+                    {
+                        "name": "updated_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ],
+                "unique_constraints": [
+                    [
+                        "person_id",
+                        "practice_date_id"
+                    ]
+                ]
+            }
+        }
+    },
+    "firmware": {
+        "device_type": "esp32_rfid",
+        "template": "rfid_access_control",
+        "sensors": [
+            {
+                "type": "MFRC522",
+                "pin_sda": 5,
+                "pin_rst": 22
+            }
+        ],
+        "actuators": [
+            {
+                "type": "relay",
+                "pin": 4,
+                "description": "Solenoid lock control"
+            },
+            {
+                "type": "buzzer",
+                "pin": 13,
+                "description": "Audio feedback"
+            },
+            {
+                "type": "led",
+                "pin": 25,
+                "color": "green",
+                "description": "Access granted"
+            },
+            {
+                "type": "led",
+                "pin": 26,
+                "color": "red",
+                "description": "Access denied"
+            }
+        ],
+        "features": [
+            "offline_queue",
+            "dynamic_card_sync",
+            "hourly_sync"
+        ],
+        "endpoints": {
+            "log_access": "/rest/v1/access_logs",
+            "log_unidentified": "/rest/v1/unidentified_cards",
+            "fetch_cards": "/rest/v1/persons?select=card_uid"
+        }
+    },
+    "dashboard": {
+        "title": "🏫 School Attendance Dashboard",
+        "tabs": [
+            {
+                "id": "choir_attendance",
+                "name": "🎵 Choir Attendance",
+                "module": "client.tabs.eduqure.choir_attendance",
+                "enabled": true
+            },
+            {
+                "id": "live_monitor",
+                "name": "⚠️ Live Monitor",
+                "module": "client.tabs.common.live_monitor",
+                "enabled": true
+            },
+            {
+                "id": "access_logs",
+                "name": "🔒 Access Logs",
+                "module": "client.tabs.common.access_logs",
+                "enabled": true
+            },
+            {
+                "id": "choir_management",
+                "name": "⚙️ Management",
+                "module": "client.tabs.eduqure.choir_management",
+                "enabled": true
+            }
+        ]
+    }
+}

@@ -1,0 +1,163 @@
+{
+    "tenant_id": "gymtrack",
+    "tenant_name": "GymTrack - Fitness Membership",
+    "tenant_type": "access_control",
+    "device_type": "rfid_reader",
+    "database": {
+        "schema_prefix": "gymtrack_",
+        "tables": {
+            "members": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "name",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "surname",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "card_uid",
+                        "type": "TEXT",
+                        "unique": true
+                    },
+                    {
+                        "name": "membership_type",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "points",
+                        "type": "INTEGER",
+                        "default": 0
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            },
+            "check_ins": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "card_uid",
+                        "type": "TEXT",
+                        "required": true
+                    },
+                    {
+                        "name": "gate_location",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    },
+                    {
+                        "name": "member_id",
+                        "type": "UUID",
+                        "foreign_key": "members.id"
+                    }
+                ]
+            },
+            "points_ledger": {
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "UUID",
+                        "primary_key": true,
+                        "default": "gen_random_uuid()"
+                    },
+                    {
+                        "name": "member_id",
+                        "type": "UUID",
+                        "foreign_key": "members.id",
+                        "required": true
+                    },
+                    {
+                        "name": "points_earned",
+                        "type": "INTEGER",
+                        "required": true
+                    },
+                    {
+                        "name": "reason",
+                        "type": "TEXT"
+                    },
+                    {
+                        "name": "created_at",
+                        "type": "TIMESTAMPTZ",
+                        "default": "NOW()"
+                    }
+                ]
+            }
+        }
+    },
+    "firmware": {
+        "device_type": "esp32_rfid",
+        "template": "rfid_access_control",
+        "sensors": [
+            {
+                "type": "MFRC522",
+                "pin_sda": 5,
+                "pin_rst": 22
+            }
+        ],
+        "actuators": [
+            {
+                "type": "relay",
+                "pin": 4,
+                "description": "Gate control"
+            },
+            {
+                "type": "buzzer",
+                "pin": 13,
+                "description": "Audio feedback"
+            }
+        ],
+        "features": [
+            "offline_queue",
+            "points_calculation"
+        ],
+        "endpoints": {
+            "log_checkin": "/rest/v1/check_ins",
+            "fetch_members": "/rest/v1/members?select=card_uid,points"
+        }
+    },
+    "dashboard": {
+        "title": "💪 GymTrack Dashboard",
+        "tabs": [
+            {
+                "id": "member_checkins",
+                "name": "📊 Member Check-ins",
+                "module": "client.tabs.gymtrack.member_checkins",
+                "enabled": true
+            },
+            {
+                "id": "points_leaderboard",
+                "name": "🏆 Points Leaderboard",
+                "module": "client.tabs.gymtrack.points_leaderboard",
+                "enabled": true
+            },
+            {
+                "id": "membership_management",
+                "name": "⚙️ Membership Management",
+                "module": "client.tabs.gymtrack.membership_management",
+                "enabled": true
+            }
+        ]
+    }
+}
