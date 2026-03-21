@@ -22,6 +22,11 @@ def get_choir_members(year):
             return pd.DataFrame()
 
         df_register = pd.DataFrame(register_data)
+        
+        # Filter out removed members
+        if "removed" in df_register.columns:
+            df_register = df_register[df_register["removed"] != True]
+            
         df_persons = pd.DataFrame(persons_data)
         
         # Merge to get names and card_uids
@@ -62,7 +67,10 @@ def create_practice_date(practice_date):
         # Check if exists
         existing = supabase.table("choir_practice_dates").select("*").eq("date", date_str).execute()
         if not existing.data:
-            supabase.table("choir_practice_dates").insert({"date": date_str}).execute()
+            supabase.table("choir_practice_dates").insert({
+                "date": date_str,
+                "updated_at": datetime.now().isoformat()
+            }).execute()
             return True, "Practice date created."
         return False, "Date already exists."
     except Exception as e:

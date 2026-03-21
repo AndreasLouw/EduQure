@@ -37,7 +37,7 @@ def add_person_to_choir(person_id, year):
         if existing.data and len(existing.data) > 0:
             # If exists but removed, update to not removed
             if existing.data[0].get("removed", False):
-                supabase.table("choir_register").update({"removed": False}).eq("id", existing.data[0]["id"]).execute()
+                supabase.table("choir_register").update({"removed": False, "updated_at": datetime.now().isoformat()}).eq("id", existing.data[0]["id"]).execute()
                 return True, "Person re-added to choir register."
             else:
                 return False, "Person already in choir register for this year."
@@ -46,7 +46,8 @@ def add_person_to_choir(person_id, year):
             supabase.table("choir_register").insert({
                 "personId": person_id,
                 "year": year,
-                "removed": False
+                "removed": False,
+                "updated_at": datetime.now().isoformat()
             }).execute()
             return True, "Person added to choir register."
     except Exception as e:
@@ -58,7 +59,8 @@ def remove_person_from_choir(register_id):
     try:
         supabase = get_supabase()
         supabase.table("choir_register").update({
-            "removed": True
+            "removed": True,
+            "updated_at": datetime.now().isoformat()
         }).eq("id", register_id).execute()
         return True, "Person removed from choir register."
     except Exception as e:
@@ -97,7 +99,10 @@ def add_practice_date(practice_date):
         if existing.data and len(existing.data) > 0:
             return False, "Practice date already exists."
         
-        supabase.table("choir_practice_dates").insert({"date": date_str}).execute()
+        supabase.table("choir_practice_dates").insert({
+            "date": date_str,
+            "updated_at": datetime.now().isoformat()
+        }).execute()
         return True, "Practice date added."
     except Exception as e:
         return False, f"Error adding practice date: {e}"
@@ -119,6 +124,8 @@ def update_person(person_id, name=None, surname=None, grade=None):
         if not data:
             return False, "No data to update."
         
+        data["updated_at"] = datetime.now().isoformat()
+        
         supabase.table("persons").update(data).eq("id", person_id).execute()
         return True, "Person updated successfully."
     except Exception as e:
@@ -132,7 +139,8 @@ def add_new_person(name, surname, grade=None, card_uid=None):
         
         data = {
             "name": name,
-            "surname": surname
+            "surname": surname,
+            "updated_at": datetime.now().isoformat()
         }
         
         if grade is not None:
