@@ -226,122 +226,103 @@ def render_session_attendance(choir_df, selected_year):
     if st.session_state.choir_session_exists and st.session_state.attendance_df is not None and not st.session_state.attendance_df.empty:
         
         st.write("**Manual Attendance & Excuses**")
-        st.caption("Batch select attendees below. Click 'Update Attendance' to save changes and calculate totals.")
+        st.caption("Select attendees below. Checking a box will automatically save and update.")
         
-        with st.form("attendance_form"):
-            edited_df = st.data_editor(
-                st.session_state.attendance_df,
-                column_config={
-                    "Name and Surname": st.column_config.TextColumn("Name and Surname", disabled=True),
-                    "Grade": st.column_config.NumberColumn("Grade", disabled=True, format="%d"),
-                    "Present": st.column_config.TextColumn("Present", disabled=True),
-                    "Time In": st.column_config.TextColumn("Time In", disabled=True),
-                    "Manual Attendance": st.column_config.CheckboxColumn("Manual Attendance"),
-                    "Excuse": st.column_config.CheckboxColumn("Excuse"),
-                    "is_present_via_card": None, # Hide this column
-                },
-                width='stretch',
-                key="attendance_editor",
-                num_rows="fixed",
-                hide_index=True
-            )
+        # Ensure success message survives the Streamlit rerun
+        update_success_msg = st.session_state.get("show_update_success")
+        if update_success_msg:
+            st.success(update_success_msg)
             
-            if st.form_submit_button("Update Attendance", type="primary"):
-                # Process changes from the editor state
-                # Note: st.data_editor inside form returns the *modified* dataframe (edited_df) upon submit
-                # BUT edited_df doesn't apply our mutual exclusivity logic automatically during the edit,
-                # so we might see both checked. We must resolve logic here.
-
-                # We can iterate the session state "edited_rows" which persists?
-                # Actually, capturing the diff is easier via session state "attendance_editor"
+        df = st.session_state.attendance_df
+        
+        # Header
+        col_widths = [3, 1, 1.5, 1.5, 1.5, 1.5]
+        header_cols = st.columns(col_widths)
+        header_cols[0].write("**Name and Surname**")
+        header_cols[1].write("**Grade**")
+        header_cols[2].write("**Present**")
+        header_cols[3].write("**Time In**")
+        header_cols[4].write("**Manual**")
+        header_cols[5].write("**Excuse**")
+        
+        st.divider()
+        
+        # Pre-process state changes to enforce immediate mutual exclusivity
+        updates_made = 0
+        current_time_str = datetime.now().strftime("%H:%M")
+        
+        for person_id, row in df.iterrows():
+            att_key = f"att_{person_id}"
+            exc_key = f"exc_{person_id}"
+            
+            # Since checkboxes render with keys, Streamlit automatically updates session_state on click
+            new_att = st.session_state.get(att_key, row["Manual Attendance"])
+            new_exc = st.session_state.get(exc_key, row["Excuse"])
+            
+            if new_att != row["Manual Attendance"] or new_exc != row["Excuse"]:
+                is_card_present = row.get("is_present_via_card", False)
                 
-                state = st.session_state.get("attendance_editor")
-                changes = state.get("edited_rows", {}) if state else {}
+                att_just_checked = new_att and not row["Manual Attendance"]
+                exc_just_checked = new_exc and not row["Excuse"]
                 
-                # Check if we have changes
-                if changes:
-                    df = st.session_state.attendance_df
-                    current_time_str = datetime.now().strftime("%H:%M")
-                    updates_made = 0
+                if att_just_checked:
+                    new_exc = False
+                    st.session_state[exc_key] = False # Force Uncheck
+                elif exc_just_checked:
+                    new_att = False
+                    st.session_state[att_key] = False # Force Uncheck
                     
-                    for idx, diff in changes.items():
-                        try:
-                            # Use internal index if sorted/filtered? 
-                            # Usually direct index access is safest if index is person_id
-                            person_id = df.index[int(idx)]
-                        except (ValueError, IndexError):
-                            continue
-                            
-                        attended = diff.get("Manual Attendance")
-                        excuse = diff.get("Excuse")
-                        
-                        # Logic: Update Local DF & DB
-                        is_card_present = df.at[person_id, "is_present_via_card"]
-                        
-                        db_attended = None
-                        db_excuse = None
-
-                        if attended is not None:
-                            if attended:
-                                df.at[person_id, "Manual Attendance"] = True
-                                df.at[person_id, "Excuse"] = False # Mutual Exclusivity
-                                df.at[person_id, "Present"] = "✅"
-                                if not is_card_present:
-                                    df.at[person_id, "Time In"] = current_time_str
-                                db_attended = True
-                                db_excuse = False
-                            else:
-                                df.at[person_id, "Manual Attendance"] = False
-                                # Recalculate State
-                                if is_card_present:
-                                    df.at[person_id, "Present"] = "✅"
-                                elif df.at[person_id, "Excuse"]: 
-                                    df.at[person_id, "Present"] = "📝"
-                                    df.at[person_id, "Time In"] = "-"
-                                else:
-                                    df.at[person_id, "Present"] = ""
-                                    df.at[person_id, "Time In"] = "-"
-                                db_attended = False
-                                # We need to check if excuse should be preserved in DB call
-                                # If excuse wasn't touched in this edit, it retains its value.
-                                # But update_manual_attendance updates *args*.
-                                # If we pass None, the function ignores it?
-                                # Let's check update_manual_attendance.
-                                # Yes, it has defaults=None.
-
-                        if excuse is not None:
-                            if excuse:
-                                df.at[person_id, "Excuse"] = True
-                                df.at[person_id, "Manual Attendance"] = False # Mutual Exclusivity
-                                if is_card_present:
-                                    df.at[person_id, "Present"] = "✅"
-                                else:
-                                    df.at[person_id, "Present"] = "📝"
-                                    df.at[person_id, "Time In"] = "-"
-                                db_excuse = True
-                                db_attended = False
-                            else:
-                                df.at[person_id, "Excuse"] = False
-                                if is_card_present:
-                                     df.at[person_id, "Present"] = "✅"
-                                elif df.at[person_id, "Manual Attendance"]:
-                                     df.at[person_id, "Present"] = "✅"
-                                else:
-                                     df.at[person_id, "Present"] = ""
-                                db_excuse = False
-
-                        # Perform DB Update
-                        if db_attended is not None or db_excuse is not None:
-                            update_manual_attendance(person_id, target_date=selected_date, attended=db_attended, excuse=db_excuse)
-                            updates_made += 1
-
-                    if updates_made > 0:
-                        st.success(f"Updated {updates_made} records.")
-                        # Clear edits ?
-                        st.session_state["attendance_editor"]["edited_rows"] = {}
-                        st.rerun() 
+                # Update DF
+                df.at[person_id, "Manual Attendance"] = new_att
+                df.at[person_id, "Excuse"] = new_exc
+                
+                if new_att:
+                    df.at[person_id, "Present"] = "✅"
+                    if not is_card_present:
+                        df.at[person_id, "Time In"] = current_time_str
+                elif new_exc:
+                    if is_card_present:
+                        df.at[person_id, "Present"] = "✅"
+                    else:
+                        df.at[person_id, "Present"] = "📝"
+                        df.at[person_id, "Time In"] = "-"
                 else:
-                    st.info("No changes to save.")
+                    if is_card_present:
+                        df.at[person_id, "Present"] = "✅"
+                    else:
+                        df.at[person_id, "Present"] = ""
+                        df.at[person_id, "Time In"] = "-"
+                        
+                # Update Database
+                update_manual_attendance(person_id, target_date=selected_date, attended=new_att, excuse=new_exc)
+                updates_made += 1
+                
+        if updates_made > 0:
+            st.session_state.show_update_success = f"Updates successfully applied. {updates_made} records updated."
+            st.rerun()
+            
+        # Render current state
+        for person_id, row in df.iterrows():
+            cols = st.columns(col_widths)
+            cols[0].write(row["Name and Surname"])
+            cols[1].write(str(row["Grade"]))
+            cols[2].write(row["Present"])
+            cols[3].write(row["Time In"])
+            
+            cols[4].checkbox("Attend", value=bool(row["Manual Attendance"]), key=f"att_{person_id}")
+            cols[5].checkbox("Excuse", value=bool(row["Excuse"]), key=f"exc_{person_id}")
+            
+        st.divider()
+        
+        st.caption("Note: Toggling a checkbox saves automatically. You don't strictly need to click update.")
+        if st.button("Update Attendance", type="primary"):
+            if updates_made == 0:
+                st.success("Updates successfully applied.")
+                
+        if update_success_msg:
+            st.success(update_success_msg)
+            # Clear it so it doesn't persist beyond this viewing
+            st.session_state.show_update_success = None
         
         # Calculate and display totals from SESSION DF
         st.divider()
