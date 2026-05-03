@@ -1,10 +1,14 @@
 #include <SPI.h>
 #include <MFRC522.h>
+#include "esp_log.h"
 #include "secrets.h"
+#include "debug.h"
 #include "access_control.h"
 #include "network_manager.h"
 #include "offline_queue.h"
 #include "card_manager.h"
+
+static int _null_log(const char*, va_list) { return 0; }
 
 #define SS_PIN 5
 #define RST_PIN 22
@@ -28,12 +32,15 @@ void syncCards() {
 
 void setup() {
   Serial.begin(115200);
-  
+  esp_log_set_vprintf(_null_log);      // Null the esp_log vprintf handler before anything else
+  Serial.setDebugOutput(false);
+
   // Init Hardware
   SPI.begin();
   rfid.PCD_Init();
   setupAccessControl();
   setupQueue(); // Initializes SPIFFS which card_manager also uses
+  SPIFFS.remove(QUEUE_FILE); // Clear any stale queue accumulated before direct-send was enabled
 
   Serial.println("\n--- School Access System v2.1 (Dynamic Sync) ---");
   
@@ -41,8 +48,9 @@ void setup() {
   loadCardsFromFile();
 
   // Connect WiFi
-  setupWiFi(); 
-  
+  setupWiFi();
+  esp_log_set_vprintf(_null_log);      // Re-apply: WiFi.begin() may re-enable esp_log output
+
   // Initial Sync
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("System Online");
@@ -57,52 +65,58 @@ void setup() {
 }
 
 void loop() {
-  // 1. Background Tasks
   unsigned long now = millis();
-  
-  // Queue Processing
-  if (now - lastQueueProcessTime > QUEUE_INTERVAL) {
-    lastQueueProcessTime = now;
-    if (WiFi.status() == WL_CONNECTED) {
-      processQueue();
-    }
-  }
 
-  // Card Sync
-  if (now - lastSyncTime > SYNC_INTERVAL) {
-    syncCards();
-  }
-
-  // 2. NFC Check
+  // 1. NFC Check — always runs first so background tasks never gate card scanning
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
-    delay(50); 
+    // Background Tasks (only while idle)
+    if (now - lastSyncTime > SYNC_INTERVAL) {
+      syncCards();
+    }
+    if (now - lastQueueProcessTime > QUEUE_INTERVAL) {
+      lastQueueProcessTime = now;
+      if (WiFi.status() == WL_CONNECTED) {
+        processQueue();
+      }
+    }
+    delay(50);
     return;
   }
 
-  // 3. Read UID
+  // 2. Read UID
   String uidStr = "0x";
   for (byte i = 0; i < rfid.uid.size; i++) {
     if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
     uidStr += String(rfid.uid.uidByte[i], HEX);
   }
-  Serial.print("scanned UID: ");
-  Serial.println(uidStr);
+  DBG_VAL("Scanned UID: ", uidStr);
 
-  // 4. Validate
+  // 3. Check authorization
   bool access = isCardAuthorized(uidStr);
+  String timestamp = getISOTime();
 
-  // 5. Act
-  if (access) {
-    grantAccess();
-  } else {
+  if (!access) {
+    // Unauthorized — red briefly, queue the log, no live sync
     denyAccess();
-  }
+    saveToQueue(uidStr, false, timestamp);
+  } else {
+    // Authorized — green on immediately, stays on while sync runs
+    indicateAccessGranted();
 
-  // 6. Log (Sync or Queue)
-  String timestamp = getISOTime(); 
-  
-  if (!sendLogToSupabase(uidStr, access, timestamp)) {
-    saveToQueue(uidStr, access, timestamp);
+    int code = -1;
+    if (WiFi.status() == WL_CONNECTED) {
+      code = sendLogToSupabase(uidStr, true, timestamp);
+    }
+
+    if (code >= 200 && code < 300) {
+      indicateSyncSuccess();
+    } else {
+      indicateSyncFailure();
+      // Queue for retry on transient failures; permanent 4xx rejections are discarded
+      if (!(code >= 400 && code < 500)) {
+        saveToQueue(uidStr, true, timestamp);
+      }
+    }
   }
 
   // 7. Reset Reader

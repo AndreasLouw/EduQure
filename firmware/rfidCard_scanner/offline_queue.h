@@ -5,12 +5,13 @@
 #include "SPIFFS.h"
 #include <ArduinoJson.h>
 #include "network_manager.h"
+#include "debug.h"
 
 #define QUEUE_FILE "/queue.txt"
 
 void setupQueue() {
   if (!SPIFFS.begin(true)) {
-    Serial.println("An Error has occurred while mounting SPIFFS");
+    Serial.println("ERROR: Failed to mount SPIFFS");
     return;
   }
 }
@@ -18,94 +19,92 @@ void setupQueue() {
 void saveToQueue(String uid, bool accessGranted, String timestamp) {
   File file = SPIFFS.open(QUEUE_FILE, FILE_APPEND);
   if (!file) {
-    Serial.println("Failed to open file for appending");
+    Serial.println("ERROR: Failed to open queue file");
     return;
   }
 
-  // Create simple JSON line
   StaticJsonDocument<256> doc;
   doc["card_uid"] = uid;
   doc["status"] = accessGranted;
-  if(timestamp.length() > 0) {
-    // We store as created_at generically, logic in network_manager will handle mapping
-    // But to be safe and consistent with previous queue logic:
-    doc["created_at"] = timestamp; 
-  }
+  if (timestamp.length() > 0) doc["created_at"] = timestamp;
 
   if (serializeJson(doc, file) == 0) {
-    Serial.println("Failed to write to file");
+    Serial.println("ERROR: Failed to write queue entry");
+  } else {
+    DBG("Queued log for " + uid);
   }
-  file.println(); // Newline separator
+  file.println();
   file.close();
-  Serial.println("Saved to offline queue");
 }
 
 void processQueue() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
-
-  if (!SPIFFS.exists(QUEUE_FILE)) {
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (!SPIFFS.exists(QUEUE_FILE)) return;
 
   File file = SPIFFS.open(QUEUE_FILE, FILE_READ);
-  if (!file) {
-    return;
-  }
+  if (!file) return;
 
-  // We need to read all lines, try to sync them, and keep those that fail.
-  // Since we can't easily modify a file in place, we write to a temp file.
-  
+  // Process up to MAX_BATCH entries per cycle to keep the main loop responsive.
+  // Stop on first transient failure — server is likely down.
+  const int MAX_BATCH = 2;
   String tempContent = "";
   bool failureOccurred = false;
-  int count = 0;
+  int synced = 0;
+  int discarded = 0;
 
   while (file.available()) {
     String line = file.readStringUntil('\n');
     line.trim();
     if (line.length() == 0) continue;
 
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, line);
+    if (failureOccurred || (synced + discarded) >= MAX_BATCH) {
+      tempContent += line + "\n";
+      continue;
+    }
 
-    if (!error) {
-      String uid = doc["card_uid"];
-      bool status = doc["status"];
-      String timestamp = "";
-      if (doc.containsKey("created_at")) {
-        const char* t = doc["created_at"];
-        if (t) timestamp = String(t);
-      }
-      
-      // Pass the stored timestamp and status
-      if (sendLogToSupabase(uid, status, timestamp)) {
-        Serial.println("Synced offline log for " + uid);
-        count++;
-      } else {
-        // Keep line
-        tempContent += line + "\n";
-        failureOccurred = true;
-      }
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, line);
+    if (err) {
+      DBG_VAL("Skipping malformed queue entry: ", err.c_str());
+      discarded++;
+      continue;
+    }
+
+    String uid = doc["card_uid"];
+    bool status = doc["status"];
+    String timestamp = "";
+    if (doc.containsKey("created_at")) {
+      const char* t = doc["created_at"];
+      if (t) timestamp = String(t);
+    }
+
+    int code = sendLogToSupabase(uid, status, timestamp);
+    if (code >= 200 && code < 300) {
+      DBG("Synced queued log for " + uid);
+      synced++;
+    } else if (code >= 400 && code < 500) {
+      // Permanent rejection — retrying won't help, discard.
+      Serial.println("Discarding log for " + uid + " (HTTP " + String(code) + ")");
+      discarded++;
+    } else {
+      // Transient failure — stop this cycle, retry next time.
+      DBG_VAL("Queue flush paused, will retry. Code: ", code);
+      tempContent += line + "\n";
+      failureOccurred = true;
     }
   }
   file.close();
 
-  if (count > 0) {
+  int processed = synced + discarded;
+  if (processed > 0) {
     if (!failureOccurred && tempContent.length() == 0) {
-      // All synced, delete file
       SPIFFS.remove(QUEUE_FILE);
     } else {
-      // Rewrite remaining
-      File fileWrite = SPIFFS.open(QUEUE_FILE, FILE_WRITE);
-      if (fileWrite) {
-        fileWrite.print(tempContent);
-        fileWrite.close();
-      }
+      File fw = SPIFFS.open(QUEUE_FILE, FILE_WRITE);
+      if (fw) { fw.print(tempContent); fw.close(); }
     }
-    Serial.print("Processed ");
-    Serial.print(count);
-    Serial.println(" offline logs.");
+    DBG_VAL("Queue: synced=", synced);
+    DBG_VAL("Queue: discarded=", discarded);
   }
 }
 
