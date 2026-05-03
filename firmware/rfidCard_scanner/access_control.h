@@ -37,11 +37,31 @@ void grantAccess() {
 
 void denyAccess() {
   Serial.println("ACCESS DENIED");
-  
+
   // "Denied" Tune
   // tone(BUZZER_PIN, 150, 500);
   digitalWrite(red_led, HIGH);
-  delay(1000); 
+  delay(1000);
+  digitalWrite(red_led, LOW);
+}
+
+// Authorized card scanned — green on immediately, stays on until sync resolves.
+void indicateAccessGranted() {
+  Serial.println("ACCESS GRANTED");
+  digitalWrite(green_led, HIGH);
+}
+
+// Supabase sync succeeded — hold green on for 1s so the user sees confirmation, then turn off.
+void indicateSyncSuccess() {
+  delay(1000);
+  digitalWrite(green_led, LOW);
+}
+
+// Supabase sync failed — clear green, red for 2 seconds, then off.
+void indicateSyncFailure() {
+  digitalWrite(green_led, LOW);
+  digitalWrite(red_led, HIGH);
+  delay(2000);
   digitalWrite(red_led, LOW);
 }
 
