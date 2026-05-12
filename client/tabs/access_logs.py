@@ -44,7 +44,7 @@ def render():
                 df_logs = df_logs.merge(df_persons, left_on=uid_col, right_on="card_uid", how="left")
         
         if "created_at" in df_logs.columns:
-            df_logs["created_at"] = pd.to_datetime(df_logs["created_at"])
+            df_logs["created_at"] = pd.to_datetime(df_logs["created_at"], format='ISO8601')
             if df_logs["created_at"].dt.tz is None:
                  df_logs["created_at"] = df_logs["created_at"].dt.tz_localize("UTC")
             df_logs["created_at"] = df_logs["created_at"].dt.tz_convert("Africa/Johannesburg")
