@@ -21,7 +21,7 @@ def render():
         df = pd.DataFrame(data)
         
         if "created_at" in df.columns:
-            df["created_at"] = pd.to_datetime(df["created_at"])
+            df["created_at"] = pd.to_datetime(df["created_at"], format='ISO8601')
             if df["created_at"].dt.tz is None:
                  df["created_at"] = df["created_at"].dt.tz_localize("UTC")
             df["created_at"] = df["created_at"].dt.tz_convert("Africa/Johannesburg")
