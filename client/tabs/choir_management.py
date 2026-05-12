@@ -300,7 +300,6 @@ def render_practice_dates_management():
                     if st.session_state.get("confirm_delete") != date_id:
                         st.session_state.confirm_delete = date_id
                         st.warning("⚠️ Click again to confirm deletion")
-                        st.rerun()
                     else:
                         success, msg = delete_practice_date(date_id)
                         if success:
