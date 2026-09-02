@@ -298,7 +298,10 @@ def render_session_attendance(choir_df, selected_year):
             if updates_made > 0:
                 st.session_state.show_update_success = f"Updates successfully applied. {updates_made} records updated."
         if editor_key in st.session_state:
-            st.session_state[editor_key]["edited_rows"] = {}
+            # Assign a fresh dict instead of mutating the nested value:
+            # newer Streamlit versions treat widget state as read-only and
+            # raise TypeError on nested assignment like [key]["edited_rows"].
+            st.session_state[editor_key] = {"edited_rows": {}}
         
         # Show the success message once, then clear it
         update_success_msg = st.session_state.get("show_update_success")
