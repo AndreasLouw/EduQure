@@ -100,12 +100,18 @@ def get_logs_for_date_range(start_date, end_date):
         return []
 
 def get_logs_for_year(year):
-    """Fetch all access logs in one query for a whole year (replaces per-date N+1)"""
+    """Fetch all access logs in one query for a whole year (replaces per-date N+1).
+
+    Selects "*" rather than a guessed column list: the uid column name has
+    differed across schema versions (card_uid vs student_uid), and selecting a
+    nonexistent column makes PostgREST fail the whole query (42703). The
+    report only uses the uid column that is actually present.
+    """
     try:
         supabase = get_supabase()
         start = datetime(year, 1, 1, 0, 0, 0)
         end = datetime(year, 12, 31, 23, 59, 59)
-        response = supabase.table("access_logs").select("card_uid, student_uid, created_at") \
+        response = supabase.table("access_logs").select("*") \
             .gte("created_at", start.isoformat()) \
             .lte("created_at", end.isoformat()) \
             .execute()
