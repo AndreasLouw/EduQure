@@ -145,10 +145,12 @@ def simulate_date_switch(st, store, members, from_date, to_date, toggle_person,
             "Excuse": rec.get("excuse", False),
         }
 
-    # Step 4: the app's diff loop
+    # Step 4: the app's diff loop -- widget keys are scoped to the selected
+    # date (att_<YYYYMMDD>_<person_id>), exactly as choir_attendance.py does
+    to_prefix = to_date.strftime("%Y%m%d")
     writes = 0
     for pid in members:
-        att_key, exc_key = f"att_{pid}", f"exc_{pid}"
+        att_key, exc_key = f"att_{to_prefix}_{pid}", f"exc_{to_prefix}_{pid}"
         # Streamlit: session_state[key] wins over the widget's value= argument
         new_att = st.session_state.get(att_key, df_state[pid]["Manual Attendance"])
         new_exc = st.session_state.get(exc_key, df_state[pid]["Excuse"])
@@ -193,7 +195,7 @@ assert len(recs) == 0, "sanity: window lookup correctly misses mismatched day"
 print("  PASS: created_at-window scoping verified (app stamps created_at with target date on insert)")
 
 # ---------------------------------------------------------------- Test 4
-print("Test 4: BUG REPRODUCTION -- without key cleanup, date B is overwritten")
+print("Test 4: date-scoped keys -- leak is impossible even WITHOUT cleanup")
 import streamlit as st
 
 def fresh_state():
@@ -201,55 +203,46 @@ def fresh_state():
     for k in list(st.session_state.keys()):
         del st.session_state[k]
 
-# user fills attendance on date A -> checkbox state + DB rows for date A
+# user fills attendance on date A -> checkbox keys + DB rows for date A
 fresh_state()
 store = []
+prefix_a = date_a.strftime("%Y%m%d")
 for pid in members:
-    st.session_state[f"att_{pid}"] = True   # checked on 02/09
-    st.session_state[f"exc_{pid}"] = False
+    st.session_state[f"att_{prefix_a}_{pid}"] = True   # checked on 02/09
+    st.session_state[f"exc_{prefix_a}_{pid}"] = False
     run_update(store, pid, date_a, attended=True, excuse=False)
 
-# user switches to date B WITHOUT the fix (no key cleanup)
+# user views the yearly report subtab, comes back, then switches to 15/07.
+# Replicate NO key cleanup at all (worst case: every cleanup path skipped).
 writes = simulate_date_switch(st, store, members, date_a, date_b,
                               toggle_person=None, clear_keys=False)
-# the diff loop "sees" stale date A state vs date B's empty DB -> mass write
 recs_a = run_fetch(store, date_a)
 recs_b = run_fetch(store, date_b)
-assert writes == 3, f"expected the buggy path to write all rows, got {writes}"
-assert len(recs_b) == 3 and all(r["attended"] is True for r in recs_b), recs_b
-print("  PASS: reproduced -- date A's True values written into date B's records")
+assert writes == 0, f"stale keys must not trigger writes, got {writes}"
+assert len(recs_a) == 3 and all(r["attended"] is True for r in recs_a), recs_a
+assert len(recs_b) == 0, f"date B must stay empty, got {recs_b}"
+print("  PASS: 02/09 keys are unreadable on 15/07 -- no UI leak, no DB writes")
 
 # ---------------------------------------------------------------- Test 5
-print("Test 5: FIX -- with key cleanup, date B initializes from DB, no overwrite")
-fresh_state()
-store = [build_record(pid, date_a, True, False) for pid in members]  # date A data
-for pid in members:
-    st.session_state[f"att_{pid}"] = True   # stale keys from viewing date A
-    st.session_state[f"exc_{pid}"] = False
-
-writes = simulate_date_switch(st, store, members, date_a, date_b,
-                              toggle_person=None, clear_keys=True)
-assert writes == 0, f"fix should prevent spurious writes, got {writes}: {store}"
-recs_a = run_fetch(store, date_a)
-assert len(recs_a) == 3 and all(r["attended"] is True for r in recs_a), recs_a
-recs_b = run_fetch(store, date_b)
-assert len(recs_b) == 0, f"date B should still be empty, got {recs_b}"
-
-# genuine user toggle on date B writes only that person to date B
-st.session_state["att_2"] = True
+print("Test 5: genuine toggle on date B writes only that person to date B")
+st.session_state[f"att_{date_b.strftime('%Y%m%d')}_2"] = True
 writes = simulate_date_switch(st, store, members, date_b, date_b,
                               toggle_person=2, clear_keys=False)
 assert writes == 1, f"expected exactly 1 genuine write, got {writes}"
 recs_a = run_fetch(store, date_a)
 assert len(recs_a) == 3 and all(r["attended"] is True for r in recs_a), \
     "date A corrupted by date B edit!"
-print("  PASS: no spurious writes; genuine toggle touches only date B")
+recs_b = run_fetch(store, date_b)
+assert len(recs_b) == 1 and recs_b[0]["person_id"] == 2, recs_b
+print("  PASS: single targeted write; date A untouched")
 
 # ---------------------------------------------------------------- Test 6
-print("Test 6: FIX preserves unrelated session state and current_view_date")
+print("Test 6: cleanup (when it runs) preserves unrelated state")
 fresh_state()
-st.session_state["att_1"] = True
-st.session_state["exc_1"] = False
+prefix_b = date_b.strftime("%Y%m%d")
+st.session_state[f"att_{prefix_a}_1"] = True
+st.session_state[f"exc_{prefix_a}_1"] = False
+st.session_state[f"att_{prefix_b}_1"] = True
 st.session_state["unrelated_key"] = "keep me"
 st.session_state["current_view_date"] = date_a
 
@@ -265,10 +258,38 @@ if "current_view_date" not in st.session_state or \
         if key.startswith("att_") or key.startswith("exc_"):
             del st.session_state[key]
 
-assert "att_1" not in st.session_state and "exc_1" not in st.session_state
+assert f"att_{prefix_a}_1" not in st.session_state
+assert f"att_{prefix_b}_1" not in st.session_state
 assert st.session_state["unrelated_key"] == "keep me"
 assert st.session_state["current_view_date"] == date_b
-print("  PASS: only att_/exc_ keys removed; other state intact")
+print("  PASS: att_/exc_ keys removed (both dates), other state intact")
+
+# ---------------------------------------------------------------- Test 7
+print("Test 7: exact reported scenario -- subtab round trip then date switch")
+# Steps: fill 02/09 -> view yearly report (same date, keys kept) -> back to
+# session attendance (same date) -> switch to 15/07 -> observe UI + write.
+fresh_state()
+store = [build_record(pid, date_b, False, False) for pid in members]  # existing 15/07 rows
+for pid in members:
+    st.session_state[f"att_{prefix_a}_{pid}"] = True
+    st.session_state[f"exc_{prefix_a}_{pid}"] = False
+    run_update(store, pid, date_a, attended=True, excuse=False)
+
+# Step: "visit yearly report and return" = rerun with same date; the app
+# rebuilds df from DB for 02/09; keys still hold 02/09 values (same date, so
+# they AGREE with the DB) -> no writes, consistent UI
+same_date_writes = simulate_date_switch(st, store, members, date_a, date_a,
+                                        toggle_person=None, clear_keys=False)
+assert same_date_writes == 0
+
+# Step: switch to 15/07. Even with NO cleanup, 02/09 keys cannot collide.
+writes = simulate_date_switch(st, store, members, date_a, date_b,
+                              toggle_person=None, clear_keys=False)
+recs_b = run_fetch(store, date_b)
+assert writes == 0, f"leak on reported scenario: {writes} writes"
+assert all(not r["attended"] and not r["excuse"] for r in recs_b), \
+    f"15/07 rows overwritten: {recs_b}"
+print("  PASS: 15/07 UI and DB retain their own values after the full flow")
 
 print()
 print("All tests passed.")
