@@ -38,5 +38,8 @@ def render_sidebar():
     """Render sidebar with user info and logout button"""
     with st.sidebar:
         st.write(f"Logged in as: {st.session_state.user.email}")
-        if st.button("Log Out"):
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            st.cache_data.clear()  # drop cached Supabase fetches so data reloads
+            st.rerun()
+        if st.button("Log Out", use_container_width=True):
             logout()
