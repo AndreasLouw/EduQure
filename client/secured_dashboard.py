@@ -21,13 +21,9 @@ def main():
     if not st.session_state.authenticated:
         login()
     else:
-        # Sidebar for logout
+        # Sidebar for logout and cache-clearing refresh
         render_sidebar()
         
-        # Refresh button
-        if st.button('Refresh Data'):
-            st.rerun()
-
         # Main tabs
         tab1, tab2, tab3, tab4 = st.tabs(["🎵 Choir Attendance", "⚠️ Live Monitor", "🔒 Access Logs", "⚙️ Management"])
 
