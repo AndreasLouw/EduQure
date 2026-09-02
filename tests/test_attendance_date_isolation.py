@@ -252,7 +252,6 @@ if "current_view_date" not in st.session_state or \
         st.session_state.current_view_date != selected_date:
     st.session_state.current_view_date = selected_date
     st.session_state.attendance_df = None
-    st.session_state.pending_attendance_changes = {}
     st.session_state.choir_session_exists = False
     for key in list(st.session_state.keys()):
         if key.startswith("att_") or key.startswith("exc_"):
