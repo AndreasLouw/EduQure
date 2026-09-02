@@ -12,32 +12,29 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    st.title("🏫 School Attendance Live Feed")
-
     # Initialize authentication
     init_auth_state()
 
     # --- Main App Logic ---
     if not st.session_state.authenticated:
+        st.header("🏫 School Attendance Live Feed")
         login()
-    else:
-        # Sidebar for logout and cache-clearing refresh
-        render_sidebar()
-        
-        # Main tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["🎵 Choir Attendance", "⚠️ Live Monitor", "🔒 Access Logs", "⚙️ Management"])
+        return
 
-        with tab1:
-            choir_attendance.render()
+    # Multipage app: only the active page's code (and its queries) executes
+    # on each rerun. With st.tabs, all four sections ran on every rerun.
+    page = st.navigation([
+        st.Page(choir_attendance.render, title="Choir Attendance", icon="🎵", default=True),
+        st.Page(live_monitor.render, title="Live Monitor", icon="⚠️"),
+        st.Page(access_logs.render, title="Access Logs", icon="🔒"),
+        st.Page(choir_management.render, title="Management", icon="⚙️"),
+    ])
 
-        with tab2:
-            live_monitor.render()
+    # Sidebar (user info, refresh, logout) renders on every page
+    render_sidebar()
 
-        with tab3:
-            access_logs.render()
-        
-        with tab4:
-            choir_management.render()
+    page.run()
+
 
 if __name__ == "__main__":
     main()

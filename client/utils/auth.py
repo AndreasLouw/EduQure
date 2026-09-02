@@ -35,8 +35,9 @@ def logout():
     st.rerun()
 
 def render_sidebar():
-    """Render sidebar with user info and logout button"""
+    """Render sidebar with app title, user info, refresh, and logout"""
     with st.sidebar:
+        st.markdown("### 🏫 School Attendance Live Feed")
         st.write(f"Logged in as: {st.session_state.user.email}")
         if st.button("🔄 Refresh Data", use_container_width=True):
             st.cache_data.clear()  # drop cached Supabase fetches so data reloads
