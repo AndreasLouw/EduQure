@@ -83,6 +83,7 @@ def render_session_attendance(choir_df, selected_year):
         st.session_state.attendance_df = None
         st.session_state.pending_attendance_changes = {}
         st.session_state.choir_session_exists = False
+        st.session_state.show_update_success = None
         if "attendance_editor" in st.session_state:
              del st.session_state.attendance_editor
         # Drop stale checkbox values from the previously viewed date, otherwise
