@@ -1,9 +1,17 @@
 import streamlit as st
 import pandas as pd
-from client.tabs.choir_data import get_practice_dates, get_logs_for_date_range, get_manual_attendance_for_date
+from client.tabs.choir_data import (
+    get_practice_dates,
+    get_logs_for_year,
+    get_manual_attendance_for_year,
+)
 
 def render_yearly_report(choir_df, selected_year):
-    """Render yearly attendance report subtab"""
+    """Render yearly attendance report subtab.
+
+    Data is fetched in 2 total queries (all card logs + all manual attendance
+    for the year) instead of 2 per practice date, then grouped in memory.
+    """
     st.subheader(f"Attendance Report {selected_year}")
     
     practice_dates_df = get_practice_dates(selected_year)
@@ -11,44 +19,45 @@ def render_yearly_report(choir_df, selected_year):
     if practice_dates_df.empty:
         st.info("No practice dates recorded yet for this year.")
     else:
-        attendance_map = {} 
-        
         with st.spinner("Compiling yearly report..."):
-            for _, date_row in practice_dates_df.iterrows():
-                p_date = date_row['date']
-                p_date_str = p_date.strftime("%Y-%m-%d")
-                
-                # 1. Get Log Attendance (Card Scans)
-                d_start = p_date.replace(hour=0, minute=0, second=0)
-                d_end = p_date.replace(hour=23, minute=59, second=59)
-                
-                logs = get_logs_for_date_range(d_start, d_end)
-                log_uids = set()
-                if logs:
-                    dfl = pd.DataFrame(logs)
-                    c = "card_uid" if "card_uid" in dfl.columns else "student_uid"
-                    if c in dfl.columns:
-                        log_uids = set(dfl[c].unique())
+            # 1. All card-scan logs for the year -> set of uids per day
+            logs = get_logs_for_year(selected_year)
+            log_uids_by_day = {}
+            if logs:
+                dfl = pd.DataFrame(logs)
+                c = "card_uid" if "card_uid" in dfl.columns else "student_uid"
+                if c in dfl.columns:
+                    dfl = dfl.dropna(subset=["created_at"])
+                    days = pd.to_datetime(dfl["created_at"]).dt.date
+                    for day, group in dfl.groupby(days):
+                        log_uids_by_day[day] = set(group[c].dropna().unique())
 
-                # 2. Get Manual Attendance
-                manual_recs = get_manual_attendance_for_date(p_date.date())
-                manual_person_ids = set()
-                excused_person_ids = set()
-                
-                if manual_recs:
-                    for r in manual_recs:
-                        pid = r.get('person_id')
-                        if pid:
-                            if r.get('attended'):
-                                manual_person_ids.add(pid)
-                            if r.get('excuse'):
-                                excused_person_ids.add(pid)
-                
-                attendance_map[p_date_str] = {
-                    "card_uids": log_uids,
-                    "manual_ids": manual_person_ids,
-                    "excused_ids": excused_person_ids
-                }
+            # 2. All manual attendance for the year -> records per day
+            manual_by_day = get_manual_attendance_for_year(selected_year)
+
+        attendance_map = {}
+        for _, date_row in practice_dates_df.iterrows():
+            p_date = date_row['date']
+            p_date_str = p_date.strftime("%Y-%m-%d")
+            p_day = p_date.date()
+
+            log_uids = log_uids_by_day.get(p_day, set())
+
+            manual_person_ids = set()
+            excused_person_ids = set()
+            for r in manual_by_day.get(p_day, []):
+                pid = r.get('person_id')
+                if pid:
+                    if r.get('attended'):
+                        manual_person_ids.add(pid)
+                    if r.get('excuse'):
+                        excused_person_ids.add(pid)
+
+            attendance_map[p_date_str] = {
+                "card_uids": log_uids,
+                "manual_ids": manual_person_ids,
+                "excused_ids": excused_person_ids
+            }
 
         matrix = []
         dates_list = sorted(attendance_map.keys())

@@ -3,8 +3,9 @@ import pandas as pd
 from datetime import datetime, date
 from client.utils.supabase_client import get_supabase
 
+@st.cache_data(ttl=60)
 def get_choir_members(year):
-    """Fetch choir members for a specific year"""
+    """Fetch choir members for a specific year (cached 60s; use clear_choir_data_cache after writes)"""
     try:
         supabase = get_supabase()
         # Get choir register
@@ -43,8 +44,9 @@ def get_choir_members(year):
         st.error(f"Error fetching choir members: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=60)
 def get_practice_dates(year):
-    """Fetch practice dates for a specific year"""
+    """Fetch practice dates for a specific year (cached 60s; use clear_choir_data_cache after writes)"""
     try:
         supabase = get_supabase()
         response = supabase.table("choir_practice_dates").select("*").execute()
@@ -59,6 +61,13 @@ def get_practice_dates(year):
         st.error(f"Error fetching practice dates: {e}")
         return pd.DataFrame()
 
+
+def clear_choir_data_cache():
+    """Invalidate cached choir fetches after any write"""
+    get_choir_members.clear()
+    get_practice_dates.clear()
+
+
 def create_practice_date(practice_date):
     """Create a new practice date"""
     try:
@@ -71,6 +80,7 @@ def create_practice_date(practice_date):
                 "date": date_str,
                 "updated_at": datetime.now().isoformat()
             }).execute()
+            clear_choir_data_cache()
             return True, "Practice date created."
         return False, "Date already exists."
     except Exception as e:
@@ -89,6 +99,21 @@ def get_logs_for_date_range(start_date, end_date):
         st.error(f"Error fetching historical logs: {e}")
         return []
 
+def get_logs_for_year(year):
+    """Fetch all access logs in one query for a whole year (replaces per-date N+1)"""
+    try:
+        supabase = get_supabase()
+        start = datetime(year, 1, 1, 0, 0, 0)
+        end = datetime(year, 12, 31, 23, 59, 59)
+        response = supabase.table("access_logs").select("card_uid, student_uid, created_at") \
+            .gte("created_at", start.isoformat()) \
+            .lte("created_at", end.isoformat()) \
+            .execute()
+        return response.data or []
+    except Exception as e:
+        st.error(f"Error fetching yearly logs: {e}")
+        return []
+
 def get_manual_attendance_for_date(target_date):
     """Fetch manual attendance records for a specific date"""
     try:
@@ -104,6 +129,34 @@ def get_manual_attendance_for_date(target_date):
     except Exception as e:
         st.error(f"Error fetching manual attendance: {e}")
         return []
+
+@st.cache_data(ttl=60)
+def get_manual_attendance_for_year(year):
+    """Fetch all manual attendance records in one query for a whole year (replaces per-date N+1).
+
+    Records are located by their created_at day (the app stamps created_at with
+    the target practice date on insert), mirroring get_manual_attendance_for_date.
+    """
+    try:
+        supabase = get_supabase()
+        start = datetime(year, 1, 1, 0, 0, 0)
+        end = datetime(year, 12, 31, 23, 59, 59)
+        response = supabase.table("manual_choir_attendance").select("*") \
+            .gte("created_at", start.isoformat()) \
+            .lte("created_at", end.isoformat()) \
+            .execute()
+        records = response.data or []
+        by_date = {}
+        for r in records:
+            created = r.get("created_at")
+            if not created:
+                continue
+            day = pd.to_datetime(created).date()
+            by_date.setdefault(day, []).append(r)
+        return by_date
+    except Exception as e:
+        st.error(f"Error fetching yearly manual attendance: {e}")
+        return {}
 
 def update_manual_attendance(person_id, target_date=None, attended=None, excuse=None):
     """Update or insert manual attendance record for a specific date (defaults to today)"""
@@ -142,6 +195,7 @@ def update_manual_attendance(person_id, target_date=None, attended=None, excuse=
             data["created_at"] = datetime.combine(target_date, datetime.now().time()).isoformat()
             supabase.table("manual_choir_attendance").insert(data).execute()
         
+        get_manual_attendance_for_year.clear()
         return True
     except Exception as e:
         st.error(f"Error updating manual attendance: {e}")
