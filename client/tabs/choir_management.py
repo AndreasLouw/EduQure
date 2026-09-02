@@ -374,13 +374,18 @@ def render_persons_management():
         # Get the current person data
         selected_person_data = df[df['ID'] == selected_person_id].iloc[0]
         
+        # Field keys are scoped to the selected person. Shared keys carried the
+        # previous person's values into the next selection and "Update Person"
+        # wrote them to the wrong record.
+        person_suffix = str(selected_person_id)
+        
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            new_name = st.text_input("Name", value=selected_person_data['Name'], key="edit_name")
+            new_name = st.text_input("Name", value=selected_person_data['Name'], key=f"edit_name_{person_suffix}")
         
         with col2:
-            new_surname = st.text_input("Surname", value=selected_person_data['Surname'], key="edit_surname")
+            new_surname = st.text_input("Surname", value=selected_person_data['Surname'], key=f"edit_surname_{person_suffix}")
         
         with col3:
             # Handle grade - could be N/A or a number
@@ -393,7 +398,7 @@ def render_persons_management():
                 except:
                     grade_value = None
             
-            new_grade = st.number_input("Grade", min_value=1, max_value=12, value=grade_value, key="edit_grade")
+            new_grade = st.number_input("Grade", min_value=1, max_value=12, value=grade_value, key=f"edit_grade_{person_suffix}")
         
         if st.button("Update Person", type="primary", key="update_person_btn"):
             # Only update if values changed
