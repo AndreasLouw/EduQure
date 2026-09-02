@@ -14,6 +14,72 @@ from client.tabs.choir_data import (
 )
 from client.tabs.choir_yearly_report import render_yearly_report
 
+
+def process_editor_edits(df, edited_rows, selected_date, current_time_str):
+    """Apply st.data_editor cell edits to the attendance df and persist them.
+
+    edited_rows maps positional row indices -> {column: new value}. Rows map
+    back to persons via the df's person_id index. Mutual exclusivity is
+    enforced here: marking a person attended clears their excuse and
+    vice-versa. Returns the number of records saved.
+    """
+    updates_made = 0
+    for row_idx, cell_edits in edited_rows.items():
+        try:
+            row_idx = int(row_idx)
+        except (TypeError, ValueError):
+            continue
+        if row_idx < 0 or row_idx >= len(df):
+            continue
+
+        person_id = df.index[row_idx]
+        row = df.iloc[row_idx]
+        new_att = cell_edits.get("Manual Attendance", bool(row["Manual Attendance"]))
+        new_exc = cell_edits.get("Excuse", bool(row["Excuse"]))
+        new_att, new_exc = bool(new_att), bool(new_exc)
+
+        # Mutual exclusivity: the field the user just flipped ON wins, matching
+        # the old checkbox flow's "just checked" semantics. Checking which
+        # field was edited (not which is True) is what lets excusing an
+        # already-attended member clear the attendance.
+        att_just_checked = new_att and not bool(row["Manual Attendance"])
+        exc_just_checked = new_exc and not bool(row["Excuse"])
+        if att_just_checked:
+            new_exc = False
+        elif exc_just_checked:
+            new_att = False
+
+        if new_att == bool(row["Manual Attendance"]) and new_exc == bool(row["Excuse"]):
+            continue  # no-op edit
+
+        is_card_present = bool(row.get("is_present_via_card", False))
+
+        df.at[person_id, "Manual Attendance"] = new_att
+        df.at[person_id, "Excuse"] = new_exc
+
+        if new_att:
+            df.at[person_id, "Present"] = "✅"
+            if not is_card_present:
+                df.at[person_id, "Time In"] = current_time_str
+        elif new_exc:
+            if is_card_present:
+                df.at[person_id, "Present"] = "✅"
+            else:
+                df.at[person_id, "Present"] = "📝"
+                df.at[person_id, "Time In"] = "-"
+        else:
+            if is_card_present:
+                df.at[person_id, "Present"] = "✅"
+            else:
+                df.at[person_id, "Present"] = ""
+                df.at[person_id, "Time In"] = "-"
+
+        update_manual_attendance(person_id, target_date=selected_date,
+                                 attended=new_att, excuse=new_exc)
+        updates_made += 1
+    return updates_made
+
+
 @st.fragment
 def render_session_attendance(choir_df, selected_year):
     """Render session attendance subtab with local caching and batched updates"""
@@ -81,11 +147,11 @@ def render_session_attendance(choir_df, selected_year):
     if "current_view_date" not in st.session_state or st.session_state.current_view_date != selected_date:
         st.session_state.current_view_date = selected_date
         st.session_state.attendance_df = None
-        st.session_state.pending_attendance_changes = {}
         st.session_state.choir_session_exists = False
         st.session_state.show_update_success = None
-        if "attendance_editor" in st.session_state:
-             del st.session_state.attendance_editor
+        for key in list(st.session_state.keys()):
+            if key.startswith("attendance_editor"):
+                del st.session_state[key]
         # Drop stale checkbox values from the previously viewed date, otherwise
         # they leak across dates and one date's data overwrites another's
         for key in list(st.session_state.keys()):
@@ -95,25 +161,18 @@ def render_session_attendance(choir_df, selected_year):
     # Initialize session state variables
     if "attendance_df" not in st.session_state:
         st.session_state.attendance_df = None
-    if "pending_attendance_changes" not in st.session_state:
-        st.session_state.pending_attendance_changes = {}
-    if "last_sync_time" not in st.session_state:
-        st.session_state.last_sync_time = time.time()
     if "choir_session_exists" not in st.session_state:
         st.session_state.choir_session_exists = False
     
     # Refresh button
     if st.button('Refresh Session Data'):
         st.session_state.attendance_df = None
-        st.session_state.pending_attendance_changes = {}
         st.session_state.choir_session_exists = False # Force check
-        # Drop checkbox state so values re-initialize from the fresh DB data
-        # instead of leaking from the previously rendered view
+        # Drop checkbox and editor state so values re-initialize from the
+        # fresh DB data instead of leaking from the previously rendered view
         for key in list(st.session_state.keys()):
-            if key.startswith("att_") or key.startswith("exc_"):
+            if key.startswith("att_") or key.startswith("exc_") or key.startswith("attendance_editor"):
                 del st.session_state[key]
-        if "attendance_editor" in st.session_state:
-             del st.session_state.attendance_editor
         st.rerun()
 
     # Widget keys are scoped to the selected date. Date-agnostic keys made any
@@ -121,26 +180,6 @@ def render_session_attendance(choir_df, selected_year):
     # and DB writes; with a date prefix a stale key from another date is
     # simply never read.
     date_prefix = selected_date.strftime("%Y%m%d")
-
-    # Function to sync pending changes to DB
-    def sync_changes():
-        pending = st.session_state.pending_attendance_changes
-        if not pending:
-            return
-        
-        count = 0
-        for person_id, changes in pending.items():
-            update_manual_attendance(
-                person_id,
-                target_date=selected_date,
-                attended=changes.get('attended'), 
-                excuse=changes.get('excuse')
-            )
-            count += 1
-        
-        st.session_state.pending_attendance_changes = {}
-        st.session_state.last_sync_time = time.time()
-        # st.toast(f"Synced {count} changes.") # Optional noise
 
     if st.session_state.attendance_df is None:
         # Check for session
@@ -240,103 +279,50 @@ def render_session_attendance(choir_df, selected_year):
     if st.session_state.choir_session_exists and st.session_state.attendance_df is not None and not st.session_state.attendance_df.empty:
         
         st.write("**Manual Attendance & Excuses**")
-        st.caption("Select attendees below. Checking a box will automatically save and update.")
+        st.caption("Tick attendees below — changes save automatically.")
         
-        # Ensure success message survives the Streamlit rerun
+        df = st.session_state.attendance_df
+        
+        # Editor state is date-scoped like every other per-date widget key
+        editor_key = f"attendance_editor_{date_prefix}"
+        
+        # Apply and persist any edits made since the last rerun, then drain them
+        # so they don't replay on subsequent reruns
+        edited_rows = {}
+        if editor_key in st.session_state:
+            edited_rows = st.session_state[editor_key].get("edited_rows", {}) or {}
+        
+        current_time_str = datetime.now().strftime("%H:%M")
+        if edited_rows:
+            updates_made = process_editor_edits(df, edited_rows, selected_date, current_time_str)
+            if updates_made > 0:
+                st.session_state.show_update_success = f"Updates successfully applied. {updates_made} records updated."
+        if editor_key in st.session_state:
+            st.session_state[editor_key]["edited_rows"] = {}
+        
+        # Show the success message once, then clear it
         update_success_msg = st.session_state.get("show_update_success")
         if update_success_msg:
             st.success(update_success_msg)
-            
-        df = st.session_state.attendance_df
-        
-        # Header
-        col_widths = [3, 1, 1.5, 1.5, 1.5, 1.5]
-        header_cols = st.columns(col_widths)
-        header_cols[0].write("**Name and Surname**")
-        header_cols[1].write("**Grade**")
-        header_cols[2].write("**Present**")
-        header_cols[3].write("**Time In**")
-        header_cols[4].write("**Manual**")
-        header_cols[5].write("**Excuse**")
-        
-        st.divider()
-        
-        # Pre-process state changes to enforce immediate mutual exclusivity
-        updates_made = 0
-        current_time_str = datetime.now().strftime("%H:%M")
-        
-        for person_id, row in df.iterrows():
-            att_key = f"att_{date_prefix}_{person_id}"
-            exc_key = f"exc_{date_prefix}_{person_id}"
-            
-            # Since checkboxes render with keys, Streamlit automatically updates session_state on click
-            new_att = st.session_state.get(att_key, row["Manual Attendance"])
-            new_exc = st.session_state.get(exc_key, row["Excuse"])
-            
-            if new_att != row["Manual Attendance"] or new_exc != row["Excuse"]:
-                is_card_present = row.get("is_present_via_card", False)
-                
-                att_just_checked = new_att and not row["Manual Attendance"]
-                exc_just_checked = new_exc and not row["Excuse"]
-                
-                if att_just_checked:
-                    new_exc = False
-                    st.session_state[exc_key] = False # Force Uncheck
-                elif exc_just_checked:
-                    new_att = False
-                    st.session_state[att_key] = False # Force Uncheck
-                    
-                # Update DF
-                df.at[person_id, "Manual Attendance"] = new_att
-                df.at[person_id, "Excuse"] = new_exc
-                
-                if new_att:
-                    df.at[person_id, "Present"] = "✅"
-                    if not is_card_present:
-                        df.at[person_id, "Time In"] = current_time_str
-                elif new_exc:
-                    if is_card_present:
-                        df.at[person_id, "Present"] = "✅"
-                    else:
-                        df.at[person_id, "Present"] = "📝"
-                        df.at[person_id, "Time In"] = "-"
-                else:
-                    if is_card_present:
-                        df.at[person_id, "Present"] = "✅"
-                    else:
-                        df.at[person_id, "Present"] = ""
-                        df.at[person_id, "Time In"] = "-"
-                        
-                # Update Database
-                update_manual_attendance(person_id, target_date=selected_date, attended=new_att, excuse=new_exc)
-                updates_made += 1
-                
-        if updates_made > 0:
-            st.session_state.show_update_success = f"Updates successfully applied. {updates_made} records updated."
-            st.rerun()
-            
-        # Render current state
-        for person_id, row in df.iterrows():
-            cols = st.columns(col_widths)
-            cols[0].write(row["Name and Surname"])
-            cols[1].write(str(row["Grade"]))
-            cols[2].write(row["Present"])
-            cols[3].write(row["Time In"])
-            
-            cols[4].checkbox("Attend", value=bool(row["Manual Attendance"]), key=f"att_{date_prefix}_{person_id}")
-            cols[5].checkbox("Excuse", value=bool(row["Excuse"]), key=f"exc_{date_prefix}_{person_id}")
-            
-        st.divider()
-        
-        st.caption("Note: Toggling a checkbox saves automatically. You don't strictly need to click update.")
-        if st.button("Update Attendance", type="primary"):
-            if updates_made == 0:
-                st.success("Updates successfully applied.")
-                
-        if update_success_msg:
-            st.success(update_success_msg)
-            # Clear it so it doesn't persist beyond this viewing
             st.session_state.show_update_success = None
+        
+        # One editable table replaces the per-row checkbox grid: fewer widgets,
+        # batched rendering, native sort. Identity/scan columns are read-only.
+        editor_df = df.reset_index(drop=True)
+        st.data_editor(
+            editor_df[["Name and Surname", "Grade", "Present", "Time In", "Manual Attendance", "Excuse"]],
+            key=editor_key,
+            width='stretch',
+            hide_index=True,
+            column_config={
+                "Name and Surname": st.column_config.Column("Name and Surname", disabled=True),
+                "Grade": st.column_config.Column("Grade", disabled=True),
+                "Present": st.column_config.Column("Present", disabled=True),
+                "Time In": st.column_config.Column("Time In", disabled=True),
+                "Manual Attendance": st.column_config.CheckboxColumn("Manual Attendance", default=False),
+                "Excuse": st.column_config.CheckboxColumn("Excuse", default=False),
+            },
+        )
         
         # Calculate and display totals from SESSION DF
         st.divider()
