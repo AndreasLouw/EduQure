@@ -22,11 +22,13 @@ from datetime import datetime, date
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from client.tabs import choir_data, choir_yearly_report
+from client.tabs import choir_attendance
 
 
 # ---------------------------------------------------------------- Test 1
 print("Test 1: year fetchers exist; per-date fetchers removed from yearly report source")
 import inspect
+import re
 
 assert hasattr(choir_data, "get_logs_for_year"), "missing get_logs_for_year"
 assert hasattr(choir_data, "get_manual_attendance_for_year"), "missing get_manual_attendance_for_year"
@@ -36,6 +38,22 @@ assert "get_logs_for_date_range" not in src, "yearly report still uses per-date 
 assert "get_manual_attendance_for_date" not in src, "yearly report still uses per-date manual fetch"
 assert "get_logs_for_year" in src and "get_manual_attendance_for_year" in src
 print("  PASS: 2-query implementation wired in")
+
+# Test 1b: get_logs_for_year must not name a uid column in its query -- the
+# schema's uid column has varied (card_uid vs student_uid) and guessing
+# wrong fails the whole PostgREST query (42703). Select "*" instead.
+logs_src = inspect.getsource(choir_data.get_logs_for_year)
+assert 'select("*")' in logs_src, logs_src
+assert not re.search(r'select\([^)]*(student_uid|card_uid)', inspect.getsource(choir_data)), \
+    "choir_data queries must not name a uid column (schema has varied)"
+print("  PASS: yearly log fetch selects all columns (schema-mismatch safe)")
+
+# Test 1c: attendance page uses a radio (rerun on switch), not st.tabs
+# (client-side switch, no rerun -> stale yearly report after manual edits)
+att_src = inspect.getsource(choir_attendance)
+assert "st.tabs(" not in att_src, "subtab st.tabs keeps hidden bodies stale"
+assert "st.radio(" in att_src and "attendance_view_mode" in att_src
+print("  PASS: session/yearly switch reruns on change (radio, not tabs)")
 
 # ---------------------------------------------------------------- Test 2
 print("Test 2: build_yearly_matrix groups data per day correctly")

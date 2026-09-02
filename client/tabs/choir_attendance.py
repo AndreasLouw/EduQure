@@ -372,11 +372,20 @@ def render():
     
     if choir_df.empty:
         st.warning(f"No choir members found for {selected_year} or table structure mismatch.")
-    else:            
-        subtab_today, subtab_year = st.tabs(["📅 Session Attendance", "📊 Yearly Report"])
+    else:
+        # Radio instead of st.tabs: tab switching is purely client-side (no
+        # rerun), so the yearly report kept showing data from whenever its
+        # body last rendered. With a radio, switching reruns the fragment and
+        # only the selected view's body executes -- the report always
+        # reflects the latest DB state, and the hidden view costs nothing.
+        view = st.radio(
+            "View",
+            ["📅 Session Attendance", "📊 Yearly Report"],
+            horizontal=True,
+            key="attendance_view_mode",
+        )
         
-        with subtab_today:
+        if view == "📅 Session Attendance":
             render_session_attendance(choir_df, selected_year)
-        
-        with subtab_year:
+        else:
             render_yearly_report(choir_df, selected_year)
