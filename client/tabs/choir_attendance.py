@@ -88,6 +88,11 @@ def render_session_attendance(choir_df, selected_year):
         st.session_state.choir_session_exists = False
         if "attendance_editor" in st.session_state:
              del st.session_state.attendance_editor
+        # Drop stale checkbox values from the previously viewed date, otherwise
+        # they leak across dates and one date's data overwrites another's
+        for key in list(st.session_state.keys()):
+            if key.startswith("att_") or key.startswith("exc_"):
+                del st.session_state[key]
              
     # Initialize session state variables
     if "attendance_df" not in st.session_state:
@@ -104,6 +109,11 @@ def render_session_attendance(choir_df, selected_year):
         st.session_state.attendance_df = None
         st.session_state.pending_attendance_changes = {}
         st.session_state.choir_session_exists = False # Force check
+        # Drop checkbox state so values re-initialize from the fresh DB data
+        # instead of leaking from the previously rendered view
+        for key in list(st.session_state.keys()):
+            if key.startswith("att_") or key.startswith("exc_"):
+                del st.session_state[key]
         if "attendance_editor" in st.session_state:
              del st.session_state.attendance_editor
         st.rerun()
