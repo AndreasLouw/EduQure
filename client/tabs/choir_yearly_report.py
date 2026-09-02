@@ -28,7 +28,11 @@ def render_yearly_report(choir_df, selected_year):
                 c = "card_uid" if "card_uid" in dfl.columns else "student_uid"
                 if c in dfl.columns:
                     dfl = dfl.dropna(subset=["created_at"])
-                    days = pd.to_datetime(dfl["created_at"]).dt.date
+                    # format="ISO8601" + utc=True: created_at strings mix
+                    # formats across schema generations (5-digit fractional
+                    # seconds, no offset, Z suffix) and pandas 3 refuses to
+                    # infer a format across mixed strings.
+                    days = pd.to_datetime(dfl["created_at"], format="ISO8601", utc=True).dt.date
                     for day, group in dfl.groupby(days):
                         log_uids_by_day[day] = set(group[c].dropna().unique())
 

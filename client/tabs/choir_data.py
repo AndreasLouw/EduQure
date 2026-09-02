@@ -157,7 +157,9 @@ def get_manual_attendance_for_year(year):
             created = r.get("created_at")
             if not created:
                 continue
-            day = pd.to_datetime(created).date()
+            # ISO8601 + utc: inserted rows carry an offset-less timestamp while
+            # DB-default rows carry "+00:00" and fractional seconds
+            day = pd.to_datetime(created, format="ISO8601", utc=True).date()
             by_date.setdefault(day, []).append(r)
         return by_date
     except Exception as e:
