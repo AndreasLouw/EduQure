@@ -29,6 +29,7 @@ from client.tabs import choir_attendance
 print("Test 1: year fetchers exist; per-date fetchers removed from yearly report source")
 import inspect
 import re
+import pandas as pd
 
 assert hasattr(choir_data, "get_logs_for_year"), "missing get_logs_for_year"
 assert hasattr(choir_data, "get_manual_attendance_for_year"), "missing get_manual_attendance_for_year"
@@ -54,6 +55,39 @@ att_src = inspect.getsource(choir_attendance)
 assert "st.tabs(" not in att_src, "subtab st.tabs keeps hidden bodies stale"
 assert "st.radio(" in att_src and "attendance_view_mode" in att_src
 print("  PASS: session/yearly switch reruns on change (radio, not tabs)")
+
+# ---------------------------------------------------------------- Test 1d
+print("Test 1d: created_at parsing survives mixed ISO formats (pandas 3 strict)")
+# The exact value class that crashed the yearly report: 5-digit fractional
+# seconds beside offset-less and Z-suffixed strings, parsed per pandas 3's
+# no-inference-across-mixed-formats rule.
+mixed = pd.Series([
+    "2026-05-03T15:12:56.48722+00:00",
+    "2026-05-03T15:12:56+00:00",
+    "2026-07-15T17:03:11",       # offset-less (app-inserted created_at)
+    "2026-08-01T09:00:00Z",
+    None,
+])
+parsed = pd.to_datetime(mixed, format="ISO8601", utc=True)
+days = parsed.dt.date.tolist()
+assert days[:4] == [pd.Timestamp("2026-05-03").date()] * 2 + [
+    pd.Timestamp("2026-07-15").date(), pd.Timestamp("2026-08-01").date()
+], days
+assert pd.isna(days[4]), days  # None -> NaT; grouping code dropna()s first
+# The scalar sites (Time In display, manual year bucketing) parse the same
+# value classes without error and stay tz-aware for tz_convert.
+scalar = pd.to_datetime("2026-07-15T17:03:11", format="ISO8601", utc=True)
+assert scalar.tzinfo is not None and scalar.strftime("%H:%M") == "17:03"
+print("  PASS: mixed-format timestamps bucket to correct days, scalars parse")
+
+# Test 1e: all created_at/updated_at parse sites use the safe pattern
+for label, src2 in [
+    ("choir_yearly_report", inspect.getsource(choir_yearly_report)),
+    ("choir_data manual bucketing", inspect.getsource(choir_data.get_manual_attendance_for_year)),
+    ("choir_attendance", att_src),
+]:
+    assert 'format="ISO8601", utc=True' in src2, f"{label} missing safe parse pattern"
+print("  PASS: every timestamp parse site pins format='ISO8601', utc=True")
 
 # ---------------------------------------------------------------- Test 2
 print("Test 2: build_yearly_matrix groups data per day correctly")

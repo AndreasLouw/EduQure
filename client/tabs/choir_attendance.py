@@ -235,14 +235,14 @@ def render_session_attendance(choir_df, selected_year):
                         person_logs = df_todays_logs[df_todays_logs[uid_col_logs] == uid]
                         if not person_logs.empty:
                             if "created_at" in person_logs.columns:
-                                first_log = pd.to_datetime(person_logs['created_at']).min()
+                                first_log = pd.to_datetime(person_logs['created_at'], format="ISO8601", utc=True).min()
                                 first_log = first_log.tz_convert("Africa/Johannesburg") if first_log.tzinfo else first_log
                                 time_in = first_log.strftime("%H:%M")
                     elif is_manually_attended:
                         manual_updated_at = manual_record.get('updated_at')
                         if manual_updated_at:
                             try:
-                                updated_time = pd.to_datetime(manual_updated_at)
+                                updated_time = pd.to_datetime(manual_updated_at, format="ISO8601", utc=True)
                                 if updated_time.tzinfo:
                                     updated_time = updated_time.tz_convert("Africa/Johannesburg")
                                 time_in = updated_time.strftime("%H:%M")
