@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 from client.utils.supabase_client import get_supabase
 
+@st.cache_data(ttl=30)
 def get_access_logs():
-    """Fetch recent access logs"""
+    """Fetch recent access logs (cached 30s -- this tab is read-only)"""
     try:
         supabase = get_supabase()
         # Increased limit to better capture daily flows for In/Out logic
@@ -13,8 +14,9 @@ def get_access_logs():
         st.error(f"Error fetching access logs: {e}")
         return []
 
+@st.cache_data(ttl=60)
 def get_persons():
-    """Fetch all persons with their card UIDs"""
+    """Fetch all persons with their card UIDs (cached 60s)"""
     try:
         supabase = get_supabase()
         response = supabase.table("persons").select("card_uid, name, surname").execute()

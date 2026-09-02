@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 from client.utils.supabase_client import get_supabase
 
+@st.cache_data(ttl=30)
 def get_unidentified_logs():
-    """Fetch recent unidentified card scans"""
+    """Fetch recent unidentified card scans (cached 30s -- this tab is read-only)"""
     try:
         supabase = get_supabase()
         response = supabase.table("unidentified_cards").select("*").order("created_at", desc=True).limit(50).execute()

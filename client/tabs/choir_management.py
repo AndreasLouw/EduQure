@@ -2,6 +2,15 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 from client.utils.supabase_client import get_supabase
+from client.tabs.choir_data import get_choir_members, get_practice_dates
+from client.tabs.access_logs import get_persons
+
+
+def clear_write_related_caches():
+    """Invalidate cached fetchers whose tables Management writes to"""
+    get_choir_members.clear()
+    get_practice_dates.clear()
+    get_persons.clear()
 
 
 def get_all_persons():
@@ -38,6 +47,7 @@ def add_person_to_choir(person_id, year):
             # If exists but removed, update to not removed
             if existing.data[0].get("removed", False):
                 supabase.table("choir_register").update({"removed": False, "updated_at": datetime.now().isoformat()}).eq("id", existing.data[0]["id"]).execute()
+                clear_write_related_caches()
                 return True, "Person re-added to choir register."
             else:
                 return False, "Person already in choir register for this year."
@@ -49,6 +59,7 @@ def add_person_to_choir(person_id, year):
                 "removed": False,
                 "updated_at": datetime.now().isoformat()
             }).execute()
+            clear_write_related_caches()
             return True, "Person added to choir register."
     except Exception as e:
         return False, f"Error adding person: {e}"
@@ -62,6 +73,7 @@ def remove_person_from_choir(register_id):
             "removed": True,
             "updated_at": datetime.now().isoformat()
         }).eq("id", register_id).execute()
+        clear_write_related_caches()
         return True, "Person removed from choir register."
     except Exception as e:
         return False, f"Error removing person: {e}"
@@ -83,6 +95,7 @@ def delete_practice_date(date_id):
     try:
         supabase = get_supabase()
         supabase.table("choir_practice_dates").delete().eq("id", date_id).execute()
+        clear_write_related_caches()
         return True, "Practice date deleted."
     except Exception as e:
         return False, f"Error deleting practice date: {e}"
@@ -103,6 +116,7 @@ def add_practice_date(practice_date):
             "date": date_str,
             "updated_at": datetime.now().isoformat()
         }).execute()
+        clear_write_related_caches()
         return True, "Practice date added."
     except Exception as e:
         return False, f"Error adding practice date: {e}"
@@ -127,6 +141,7 @@ def update_person(person_id, name=None, surname=None, grade=None):
         data["updated_at"] = datetime.now().isoformat()
         
         supabase.table("persons").update(data).eq("id", person_id).execute()
+        clear_write_related_caches()
         return True, "Person updated successfully."
     except Exception as e:
         return False, f"Error updating person: {e}"
@@ -149,6 +164,7 @@ def add_new_person(name, surname, grade=None, card_uid=None):
             data["card_uid"] = card_uid
         
         supabase.table("persons").insert(data).execute()
+        clear_write_related_caches()
         return True, "Person added successfully."
     except Exception as e:
         return False, f"Error adding person: {e}"
@@ -159,6 +175,7 @@ def delete_person(person_id):
     try:
         supabase = get_supabase()
         supabase.table("persons").delete().eq("id", person_id).execute()
+        clear_write_related_caches()
         return True, "Person deleted successfully."
     except Exception as e:
         return False, f"Error deleting person: {e}"
