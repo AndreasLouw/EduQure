@@ -135,5 +135,13 @@ for key in list(fake_state.keys()):
 assert fake_state == {}, fake_state
 print("  PASS: editor state cannot leak across dates")
 
+# ---------------------------------------------------------------- Test 6
+print("Test 6: editor widget key is never assigned to (forbidden in Streamlit 1.52+)")
+assert 'st.session_state[editor_key] =' not in src, (
+    "writing to a st.data_editor widget key raises "
+    "StreamlitValueAssignmentNotAllowedError (writes_allowed=False)"
+)
+print("  PASS: no forbidden write to the editor key")
+
 print()
 print("All tests passed.")

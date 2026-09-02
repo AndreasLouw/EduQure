@@ -286,8 +286,7 @@ def render_session_attendance(choir_df, selected_year):
         # Editor state is date-scoped like every other per-date widget key
         editor_key = f"attendance_editor_{date_prefix}"
         
-        # Apply and persist any edits made since the last rerun, then drain them
-        # so they don't replay on subsequent reruns
+        # Apply and persist any edits made since the last rerun
         edited_rows = {}
         if editor_key in st.session_state:
             edited_rows = st.session_state[editor_key].get("edited_rows", {}) or {}
@@ -297,11 +296,11 @@ def render_session_attendance(choir_df, selected_year):
             updates_made = process_editor_edits(df, edited_rows, selected_date, current_time_str)
             if updates_made > 0:
                 st.session_state.show_update_success = f"Updates successfully applied. {updates_made} records updated."
-        if editor_key in st.session_state:
-            # Assign a fresh dict instead of mutating the nested value:
-            # newer Streamlit versions treat widget state as read-only and
-            # raise TypeError on nested assignment like [key]["edited_rows"].
-            st.session_state[editor_key] = {"edited_rows": {}}
+        # No drain of the widget key: st.data_editor keys are read-only in
+        # modern Streamlit (writes_allowed=False), so assigning to
+        # st.session_state[editor_key] raises StreamlitValueAssignmentNotAllowedError.
+        # Stale edited_rows are harmless: process_editor_edits skips no-op
+        # edits, and the date-change and refresh cleanups delete the key.
         
         # Show the success message once, then clear it
         update_success_msg = st.session_state.get("show_update_success")
