@@ -14,6 +14,7 @@ These tests verify the structure that guarantees that behavior:
    env runs 1.63)
 """
 import sys
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -31,7 +32,14 @@ assert "st.tabs(" not in src, "global st.tabs must be gone"
 for mod_name in ["choir_attendance", "live_monitor", "access_logs", "choir_management"]:
     assert f"{mod_name}.render" in src, f"page missing: {mod_name}"
 assert "default=True" in src, "attendance must be the default page"
-print("  PASS: 4 pages registered, attendance default")
+# Every page needs an explicit unique url_path: Streamlit infers the pathname
+# from callable.__name__ (all our entry points are named "render"), and the
+# duplicate-pathname check only runs with a live script-run context, so it
+# cannot be caught in bare-mode tests. Source-level assertion is the guard.
+paths = re.findall(r'url_path="([^"]+)"', src)
+assert len(paths) == 4, f"expected 4 explicit url_paths, got {paths}"
+assert len(set(paths)) == 4, f"url_paths must be unique, got {paths}"
+print("  PASS: 4 pages registered with unique url_paths, attendance default")
 
 # ---------------------------------------------------------------- Test 2
 print("Test 2: login gating preserved")

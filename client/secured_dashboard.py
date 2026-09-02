@@ -23,11 +23,14 @@ def main():
 
     # Multipage app: only the active page's code (and its queries) executes
     # on each rerun. With st.tabs, all four sections ran on every rerun.
+    # url_path must be explicit: Streamlit infers the pathname from
+    # callable.__name__, and all four entry points are named "render",
+    # which triggers "Multiple Pages specified with URL pathname".
     page = st.navigation([
-        st.Page(choir_attendance.render, title="Choir Attendance", icon="🎵", default=True),
-        st.Page(live_monitor.render, title="Live Monitor", icon="⚠️"),
-        st.Page(access_logs.render, title="Access Logs", icon="🔒"),
-        st.Page(choir_management.render, title="Management", icon="⚙️"),
+        st.Page(choir_attendance.render, title="Choir Attendance", icon="🎵", url_path="attendance", default=True),
+        st.Page(live_monitor.render, title="Live Monitor", icon="⚠️", url_path="live-monitor"),
+        st.Page(access_logs.render, title="Access Logs", icon="🔒", url_path="access-logs"),
+        st.Page(choir_management.render, title="Management", icon="⚙️", url_path="management"),
     ])
 
     # Sidebar (user info, refresh, logout) renders on every page
