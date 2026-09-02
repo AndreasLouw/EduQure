@@ -15,9 +15,6 @@ from client.tabs.choir_data import (
 from client.tabs.choir_yearly_report import render_yearly_report
 
 @st.fragment
-
-
-@st.fragment
 def render_session_attendance(choir_df, selected_year):
     """Render session attendance subtab with local caching and batched updates"""
     st.subheader("Session Attendance")
@@ -117,6 +114,12 @@ def render_session_attendance(choir_df, selected_year):
         if "attendance_editor" in st.session_state:
              del st.session_state.attendance_editor
         st.rerun()
+
+    # Widget keys are scoped to the selected date. Date-agnostic keys made any
+    # missed state cleanup leak one date's checkbox values into another's UI
+    # and DB writes; with a date prefix a stale key from another date is
+    # simply never read.
+    date_prefix = selected_date.strftime("%Y%m%d")
 
     # Function to sync pending changes to DB
     def sync_changes():
@@ -262,8 +265,8 @@ def render_session_attendance(choir_df, selected_year):
         current_time_str = datetime.now().strftime("%H:%M")
         
         for person_id, row in df.iterrows():
-            att_key = f"att_{person_id}"
-            exc_key = f"exc_{person_id}"
+            att_key = f"att_{date_prefix}_{person_id}"
+            exc_key = f"exc_{date_prefix}_{person_id}"
             
             # Since checkboxes render with keys, Streamlit automatically updates session_state on click
             new_att = st.session_state.get(att_key, row["Manual Attendance"])
@@ -319,8 +322,8 @@ def render_session_attendance(choir_df, selected_year):
             cols[2].write(row["Present"])
             cols[3].write(row["Time In"])
             
-            cols[4].checkbox("Attend", value=bool(row["Manual Attendance"]), key=f"att_{person_id}")
-            cols[5].checkbox("Excuse", value=bool(row["Excuse"]), key=f"exc_{person_id}")
+            cols[4].checkbox("Attend", value=bool(row["Manual Attendance"]), key=f"att_{date_prefix}_{person_id}")
+            cols[5].checkbox("Excuse", value=bool(row["Excuse"]), key=f"exc_{date_prefix}_{person_id}")
             
         st.divider()
         
